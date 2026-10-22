@@ -125,6 +125,9 @@ namespace Engine {
             if (ImGui::MenuItem("Light Component (Point)")) {
                 actor->AddComponent<LightComponent>(LightType::Point);
             }
+            if (ImGui::MenuItem("Light Component (Spot)")) {
+                actor->AddComponent<LightComponent>(LightType::Spot);
+            }
             if (ImGui::MenuItem("Audio Component")) {
                 actor->AddComponent<AudioComponent>();
             }

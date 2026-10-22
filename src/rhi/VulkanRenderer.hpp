@@ -21,6 +21,12 @@ namespace Engine {
         glm::vec4 ColorAndIntensity{1.0f};
     };
 
+    struct SpotLightData {
+        glm::vec4 PositionAndRadius{0.0f};     ///< xyz: Position, w: Radius
+        glm::vec4 DirectionAndInner{0.0f};     ///< xyz: Forward direction, w: cos(InnerAngle)
+        glm::vec4 ColorAndOuter{1.0f};         ///< rgb: LightColor * Intensity, w: cos(OuterAngle)
+    };
+
     /**
      * @struct SceneUBO
      * @brief Uniform buffer layout passed to vertex/fragment shaders with dynamic lights.
@@ -32,9 +38,10 @@ namespace Engine {
         glm::vec4 DirLightDirAndEnabled{0.0f};
         glm::vec4 DirLightColorAndIntensity{1.0f};
         PointLightData PointLights[4];
+        SpotLightData SpotLights[2];
         glm::ivec4 RenderModes{0, 0, 0, 1};              // x: PointLightCount, y: LightingModel, z: ToneMappingMode, w: AntiAliasingMode
         glm::vec4 RenderParams{1.0f, 2.2f, 0.6f, 0.4f};  // x: Exposure, y: Gamma, z: AOStrength, w: BloomIntensity
-        glm::ivec4 ShaderVolume{0, 1, 0, 0};             // x: bActive, y: EffectType, z: 0, w: 0
+        glm::ivec4 ShaderVolume{0, 1, 0, 0};             // x: bActive, y: EffectType, z: SpotLightCount, w: 0
         glm::vec4 ShaderParams{1.0f, 0.85f, 0.25f, 0.0f};// x: Intensity, y: Param1, z: Param2, w: Param3
     };
 

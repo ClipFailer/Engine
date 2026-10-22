@@ -7,6 +7,9 @@
 #include "scene/PositionComponent.hpp"
 #include "scene/WidgetComponent.hpp"
 #include "scene/StaticMeshComponent.hpp"
+#include "scene/CollisionComponent.hpp"
+#include "scene/ShaderComponent.hpp"
+#include "scene/LightComponent.hpp"
 #include "core/Log.hpp"
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -111,6 +114,7 @@ namespace Engine {
         HandlePicking(scene);
         HandleCameraInput(scene, selectedActor);
         RenderToolbar();
+        RenderVisualizers(selectedActor);
         RenderGizmo(selectedActor);
 
         ImGui::End();
@@ -173,6 +177,18 @@ namespace Engine {
         if (selectedActor && ImGui::IsKeyPressed(ImGuiKey_Delete)) {
             scene.DestroyActor(selectedActor);
             if (OnActorSelected) OnActorSelected(nullptr);
+            return;
+        }
+
+        // Duplicate selected actor on Ctrl+D
+        if (selectedActor && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D)) {
+            nlohmann::json j = selectedActor->Serialize(/*bIncludePosition=*/true);
+            auto duplicate = scene.SpawnActor(selectedActor->GetName() + "_Copy", false);
+            duplicate->Deserialize(j, true);
+            duplicate->SetName(selectedActor->GetName() + "_Copy");
+            duplicate->Transform.Position += glm::vec3(1.0f, 0.0f, 0.0f);
+            if (OnActorSelected) OnActorSelected(duplicate);
+            LOG_INFO("Duplicated Actor '{}' -> '{}'", selectedActor->GetName(), duplicate->GetName());
             return;
         }
 
@@ -267,6 +283,116 @@ namespace Engine {
 
             if (auto posComp = selectedActor->GetComponent<PositionComponent>()) {
                 posComp->Transform = selectedActor->Transform;
+            }
+        }
+    }
+
+    void ViewportPanel::RenderVisualizers(Actor* selectedActor) {
+        if (!selectedActor) return;
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        float aspect = (m_ViewportSize.x > 0.0f && m_ViewportSize.y > 0.0f) ? (m_ViewportSize.x / m_ViewportSize.y) : 1.777f;
+        glm::mat4 stdProj = glm::perspective(glm::radians(m_Camera.GetFOV()), aspect, m_Camera.GetNearClip(), m_Camera.GetFarClip());
+        glm::mat4 vp = stdProj * m_Camera.GetViewMatrix();
+
+        auto ProjectPoint = [&](const glm::vec3& p, ImVec2& outPos) -> bool {
+            glm::vec4 clip = vp * glm::vec4(p, 1.0f);
+            if (clip.w <= 0.01f) return false;
+            glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            if (ndc.z < -1.0f || ndc.z > 1.0f) return false;
+            outPos.x = m_ViewportPos.x + (ndc.x * 0.5f + 0.5f) * m_ViewportSize.x;
+            outPos.y = m_ViewportPos.y + (-ndc.y * 0.5f + 0.5f) * m_ViewportSize.y;
+            return true;
+        };
+
+        auto DrawWireBox = [&](const glm::vec3& center, const glm::vec3& half, ImU32 color) {
+            glm::vec3 corners[8] = {
+                center + glm::vec3(-half.x, -half.y, -half.z),
+                center + glm::vec3( half.x, -half.y, -half.z),
+                center + glm::vec3( half.x,  half.y, -half.z),
+                center + glm::vec3(-half.x,  half.y, -half.z),
+                center + glm::vec3(-half.x, -half.y,  half.z),
+                center + glm::vec3( half.x, -half.y,  half.z),
+                center + glm::vec3( half.x,  half.y,  half.z),
+                center + glm::vec3(-half.x,  half.y,  half.z)
+            };
+            ImVec2 screenCorners[8];
+            bool valid[8];
+            for (int i = 0; i < 8; ++i) valid[i] = ProjectPoint(corners[i], screenCorners[i]);
+
+            int edges[12][2] = {
+                {0, 1}, {1, 2}, {2, 3}, {3, 0},
+                {4, 5}, {5, 6}, {6, 7}, {7, 4},
+                {0, 4}, {1, 5}, {2, 6}, {3, 7}
+            };
+            for (auto& e : edges) {
+                if (valid[e[0]] && valid[e[1]]) {
+                    drawList->AddLine(screenCorners[e[0]], screenCorners[e[1]], color, 1.5f);
+                }
+            }
+        };
+
+        auto DrawWireSphere = [&](const glm::vec3& center, float radius, ImU32 color) {
+            const int segments = 24;
+            ImVec2 pPrev, pCurr;
+            // XY circle
+            for (int i = 0; i <= segments; ++i) {
+                float theta = (float)i / (float)segments * 6.2831853f;
+                glm::vec3 pt = center + glm::vec3(std::cos(theta) * radius, std::sin(theta) * radius, 0.0f);
+                if (ProjectPoint(pt, pCurr)) {
+                    if (i > 0) drawList->AddLine(pPrev, pCurr, color, 1.5f);
+                    pPrev = pCurr;
+                }
+            }
+            // XZ circle
+            for (int i = 0; i <= segments; ++i) {
+                float theta = (float)i / (float)segments * 6.2831853f;
+                glm::vec3 pt = center + glm::vec3(std::cos(theta) * radius, 0.0f, std::sin(theta) * radius);
+                if (ProjectPoint(pt, pCurr)) {
+                    if (i > 0) drawList->AddLine(pPrev, pCurr, color, 1.5f);
+                    pPrev = pCurr;
+                }
+            }
+        };
+
+        // 1. Collision Visualizer
+        if (auto coll = selectedActor->GetComponent<CollisionComponent>()) {
+            glm::vec3 center = selectedActor->Transform.Position + coll->Offset;
+            if (coll->Shape == CollisionShape::Box) {
+                DrawWireBox(center, coll->BoxHalfExtents * selectedActor->Transform.Scale, IM_COL32(75, 225, 95, 220));
+            } else {
+                DrawWireSphere(center, coll->SphereRadius * (std::max)({selectedActor->Transform.Scale.x, selectedActor->Transform.Scale.y, selectedActor->Transform.Scale.z}), IM_COL32(75, 225, 95, 220));
+            }
+        }
+
+        // 2. Shader Volume Visualizer
+        if (auto sc = selectedActor->GetComponent<ShaderComponent>()) {
+            glm::vec3 center = selectedActor->Transform.Position + sc->TriggerOffset;
+            if (sc->bIsSphereZone) {
+                DrawWireSphere(center, sc->TriggerRadius, IM_COL32(255, 160, 40, 220));
+            } else {
+                DrawWireBox(center, sc->TriggerHalfExtents, IM_COL32(255, 160, 40, 220));
+            }
+        }
+
+        // 3. Light Visualizer
+        if (auto light = selectedActor->GetComponent<LightComponent>()) {
+            glm::vec3 center = selectedActor->Transform.Position;
+            if (light->Type == LightType::Point) {
+                DrawWireSphere(center, light->Radius, IM_COL32(255, 220, 60, 180));
+            } else if (light->Type == LightType::Spot) {
+                DrawWireSphere(center, light->Radius * 0.25f, IM_COL32(255, 220, 60, 180));
+                glm::vec3 fwd = selectedActor->Transform.GetForward();
+                ImVec2 pStart, pEnd;
+                if (ProjectPoint(center, pStart) && ProjectPoint(center + fwd * (light->Radius * 0.75f), pEnd)) {
+                    drawList->AddLine(pStart, pEnd, IM_COL32(255, 235, 80, 240), 2.0f);
+                }
+            } else if (light->Type == LightType::Directional) {
+                glm::vec3 fwd = selectedActor->Transform.GetForward();
+                ImVec2 pStart, pEnd;
+                if (ProjectPoint(center, pStart) && ProjectPoint(center + fwd * 4.0f, pEnd)) {
+                    drawList->AddLine(pStart, pEnd, IM_COL32(255, 215, 0, 240), 2.5f);
+                }
             }
         }
     }

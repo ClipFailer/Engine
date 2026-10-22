@@ -5,6 +5,12 @@ struct PointLightData {
     vec4 colorAndIntensity;
 };
 
+struct SpotLightData {
+    vec4 positionAndRadius;
+    vec4 directionAndInner;
+    vec4 colorAndOuter;
+};
+
 layout(binding = 0) uniform SceneUBO {
     mat4 view;
     mat4 proj;
@@ -12,9 +18,10 @@ layout(binding = 0) uniform SceneUBO {
     vec4 dirLightDirAndEnabled;
     vec4 dirLightColorAndIntensity;
     PointLightData pointLights[4];
+    SpotLightData spotLights[2];
     ivec4 renderModes; // x: pointLightCount, y: lightingModel, z: toneMappingMode, w: antiAliasingMode
     vec4 renderParams; // x: exposure, y: gamma, z: aoStrength, w: bloomIntensity
-    ivec4 shaderVolume; // x: active(0/1), y: effectType(1..6), z: unused, w: unused
+    ivec4 shaderVolume; // x: active(0/1), y: effectType(1..6), z: spotLightCount, w: unused
     vec4 shaderParams; // x: intensity, y: param1, z: param2, w: param3
 } ubo;
 

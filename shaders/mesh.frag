@@ -5,6 +5,12 @@ struct PointLightData {
     vec4 colorAndIntensity;
 };
 
+struct SpotLightData {
+    vec4 positionAndRadius;
+    vec4 directionAndInner;
+    vec4 colorAndOuter;
+};
+
 layout(binding = 0) uniform SceneUBO {
     mat4 view;
     mat4 proj;
@@ -12,9 +18,10 @@ layout(binding = 0) uniform SceneUBO {
     vec4 dirLightDirAndEnabled;
     vec4 dirLightColorAndIntensity;
     PointLightData pointLights[4];
+    SpotLightData spotLights[2];
     ivec4 renderModes; // x: pointLightCount, y: lightingModel, z: toneMappingMode, w: antiAliasingMode
     vec4 renderParams; // x: exposure, y: gamma, z: aoStrength, w: bloomIntensity
-    ivec4 shaderVolume; // x: active(0/1), y: effectType(1..6), z: unused, w: unused
+    ivec4 shaderVolume; // x: active(0/1), y: effectType(1..6), z: spotLightCount, w: unused
     vec4 shaderParams; // x: intensity, y: param1, z: param2, w: param3
 } ubo;
 
@@ -147,6 +154,52 @@ void main() {
             } else {
                 float wrap = max(0.0, (dot(N, L) + 0.5) / 1.5);
                 Lo += albedo * radiance * wrap;
+            }
+        }
+    }
+
+    // 2.1 Dynamic Spot Lights
+    for (int i = 0; i < ubo.shaderVolume.z && i < 2; ++i) {
+        vec3 lightPos = ubo.spotLights[i].positionAndRadius.xyz;
+        float radius = ubo.spotLights[i].positionAndRadius.w;
+        vec3 spotDir = normalize(ubo.spotLights[i].directionAndInner.xyz);
+        float cosInner = ubo.spotLights[i].directionAndInner.w;
+        vec3 lightColor = ubo.spotLights[i].colorAndOuter.xyz;
+        float cosOuter = ubo.spotLights[i].colorAndOuter.w;
+
+        vec3 toLight = lightPos - fragWorldPos;
+        float dist = length(toLight);
+        if (dist < radius && radius > 0.001) {
+            vec3 L = normalize(toLight);
+            float cosAngle = dot(-L, spotDir);
+            float spotFactor = clamp((cosAngle - cosOuter) / max(cosInner - cosOuter, 0.001), 0.0, 1.0);
+            if (spotFactor > 0.001) {
+                vec3 H = normalize(V + L);
+                float atten = clamp(1.0 - (dist / radius), 0.0, 1.0);
+                atten *= atten;
+                vec3 radiance = lightColor * atten * spotFactor;
+                float NdotL = max(dot(N, L), 0.0);
+
+                if (lightingModel == 0) {
+                    float NDF = DistributionGGX(N, H, roughness);
+                    float G = GeometrySmith(N, V, L, roughness);
+                    vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+                    vec3 numerator = NDF * G * F;
+                    float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
+                    vec3 specular = numerator / denominator;
+
+                    vec3 kS = F;
+                    vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+                    Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+                } else if (lightingModel == 1) {
+                    float diff = NdotL;
+                    float spec = pow(max(dot(N, H), 0.0), mix(16.0, 128.0, 1.0 - roughness));
+                    Lo += (albedo * diff + vec3(spec * 0.7)) * radiance;
+                } else {
+                    float wrap = max(0.0, (dot(N, L) + 0.5) / 1.5);
+                    Lo += albedo * radiance * wrap;
+                }
             }
         }
     }

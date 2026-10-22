@@ -135,6 +135,8 @@ namespace Engine {
                 c["color"] = {light->LightColor.r, light->LightColor.g, light->LightColor.b};
                 c["intensity"] = light->Intensity;
                 c["radius"] = light->Radius;
+                c["inner_cone"] = light->InnerConeAngle;
+                c["outer_cone"] = light->OuterConeAngle;
             } else if (auto move = dynamic_cast<MovementComponent*>(comp.get())) {
                 c["max_speed"] = move->MaxSpeed;
                 c["acceleration"] = move->Acceleration;
@@ -277,6 +279,8 @@ namespace Engine {
                         }
                         if (c.contains("intensity")) light->Intensity = c["intensity"];
                         if (c.contains("radius")) light->Radius = c["radius"];
+                        if (c.contains("inner_cone")) light->InnerConeAngle = c["inner_cone"];
+                        if (c.contains("outer_cone")) light->OuterConeAngle = c["outer_cone"];
                     } else if (compClass == "MovementComponent") {
                         auto move = GetComponent<MovementComponent>();
                         if (!move) move = AddComponent<MovementComponent>();

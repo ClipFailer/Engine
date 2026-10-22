@@ -121,6 +121,18 @@ namespace Engine {
                     }
                     m_SelectedActor = light;
                 }
+                if (ImGui::MenuItem("Spot Light")) {
+                    auto light = scene.SpawnLightActor("Spot Light", LightType::Spot);
+                    light->Transform.Position = glm::vec3(0.0f, 4.0f, 0.0f);
+                    light->Transform.Rotation = glm::vec3(-60.0f, 0.0f, 0.0f);
+                    if (auto sl = light->GetComponent<LightComponent>()) {
+                        sl->Radius = 20.0f;
+                        sl->Intensity = 3.0f;
+                        sl->InnerConeAngle = 20.0f;
+                        sl->OuterConeAngle = 35.0f;
+                    }
+                    m_SelectedActor = light;
+                }
                 if (ImGui::MenuItem("Shader Volume (Trigger / Post-Process)")) {
                     auto shaderActor = scene.SpawnActor<ShaderActor>("Shader Volume");
                     shaderActor->Transform.Position = glm::vec3(0.0f, 1.0f, 0.0f);

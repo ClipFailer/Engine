@@ -592,6 +592,7 @@ namespace Engine {
 
         // Collect dynamic lights
         int pointIndex = 0;
+        int spotIndex = 0;
         for (const auto& actor : scene.GetActors()) {
             if (!actor->bIsVisible) continue;
             if (auto light = actor->GetComponent<LightComponent>()) {
@@ -603,10 +604,19 @@ namespace Engine {
                     ubo.PointLights[pointIndex].PositionAndRadius = glm::vec4(actor->Transform.Position, light->Radius);
                     ubo.PointLights[pointIndex].ColorAndIntensity = glm::vec4(light->LightColor, light->Intensity);
                     pointIndex++;
+                } else if (light->Type == LightType::Spot && spotIndex < 2) {
+                    glm::vec3 forward = actor->Transform.GetForward();
+                    float cosInner = std::cos(glm::radians(light->InnerConeAngle));
+                    float cosOuter = std::cos(glm::radians(light->OuterConeAngle));
+                    ubo.SpotLights[spotIndex].PositionAndRadius = glm::vec4(actor->Transform.Position, light->Radius);
+                    ubo.SpotLights[spotIndex].DirectionAndInner = glm::vec4(forward, cosInner);
+                    ubo.SpotLights[spotIndex].ColorAndOuter = glm::vec4(light->LightColor * light->Intensity, cosOuter);
+                    spotIndex++;
                 }
             }
         }
         ubo.RenderModes.x = pointIndex;
+        ubo.ShaderVolume.z = spotIndex;
 
         m_SceneUBO->UploadData(&ubo, sizeof(SceneUBO));
 

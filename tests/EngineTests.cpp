@@ -643,6 +643,46 @@ namespace EngineTests {
         return true;
     }
 
+    bool TestSpotLightAndActorDuplication() {
+        Engine::Scene scene;
+        auto light = scene.SpawnLightActor("StageSpotLight", Engine::LightType::Spot);
+        TEST_ASSERT(light != nullptr, "SpawnLightActor failed");
+        auto comp = light->GetComponent<Engine::LightComponent>();
+        TEST_ASSERT(comp != nullptr, "LightComponent missing on Spot Light Actor");
+        TEST_ASSERT(comp->Type == Engine::LightType::Spot, "LightType must be Spot");
+
+        comp->Intensity = 5.0f;
+        comp->Radius = 30.0f;
+        comp->InnerConeAngle = 18.0f;
+        comp->OuterConeAngle = 32.0f;
+
+        // Serialization
+        nlohmann::json j = light->Serialize();
+        Engine::Actor restored("RestoredSpotLight", false);
+        restored.Deserialize(j);
+
+        auto restoredComp = restored.GetComponent<Engine::LightComponent>();
+        TEST_ASSERT(restoredComp != nullptr, "Restored LightComponent missing");
+        TEST_ASSERT(restoredComp->Type == Engine::LightType::Spot, "Restored LightType mismatch");
+        TEST_ASSERT(std::abs(restoredComp->Intensity - 5.0f) < 0.01f, "Restored Intensity mismatch");
+        TEST_ASSERT(std::abs(restoredComp->Radius - 30.0f) < 0.01f, "Restored Radius mismatch");
+        TEST_ASSERT(std::abs(restoredComp->InnerConeAngle - 18.0f) < 0.01f, "Restored InnerConeAngle mismatch");
+        TEST_ASSERT(std::abs(restoredComp->OuterConeAngle - 32.0f) < 0.01f, "Restored OuterConeAngle mismatch");
+
+        // Actor Duplication test (Ctrl+D equivalent)
+        nlohmann::json dupJson = light->Serialize(true);
+        auto duplicated = scene.SpawnActor(light->GetName() + "_Copy", false);
+        duplicated->Deserialize(dupJson, true);
+        duplicated->SetName(light->GetName() + "_Copy");
+        duplicated->Transform.Position += glm::vec3(1.0f, 0.0f, 0.0f);
+
+        TEST_ASSERT(duplicated->GetName() == "StageSpotLight_Copy", "Duplicated name mismatch");
+        TEST_ASSERT(duplicated->GetComponent<Engine::LightComponent>() != nullptr, "Duplicated component missing");
+        TEST_ASSERT(std::abs(duplicated->Transform.Position.x - (light->Transform.Position.x + 1.0f)) < 0.01f, "Duplicated position offset mismatch");
+
+        return true;
+    }
+
 } // namespace EngineTests
 
 int main() {
@@ -651,7 +691,7 @@ int main() {
     std::cout << "========================================\n";
 
     int passed = 0;
-    int total = 17;
+    int total = 18;
 
     auto runTest = [&](const char* name, bool(*func)()) {
         std::cout << "[RUNNING] " << name << "... ";
@@ -680,6 +720,7 @@ int main() {
     runTest("3D OBJ Mesh Loading & Texture Assignment", EngineTests::TestOBJMeshLoadingAndTextures);
     runTest("Shader Trigger Volume & Global Mode", EngineTests::TestShaderComponentAndTriggerVolume);
     runTest("Camera Focus & Graphics Render Settings", EngineTests::TestCameraFocusAndRenderSettings);
+    runTest("Spot Light & Actor Duplication (Ctrl+D)", EngineTests::TestSpotLightAndActorDuplication);
 
     std::cout << "========================================\n";
     std::cout << "Tests Passed: " << passed << " / " << total << "\n";

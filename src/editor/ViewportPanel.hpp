@@ -40,6 +40,7 @@ namespace Engine {
         void HandleCameraInput(Scene& scene, Actor* selectedActor);
         void RenderToolbar();
         void RenderGizmo(Actor* selectedActor);
+        void RenderVisualizers(Actor* selectedActor);
         void HandlePicking(const Scene& scene);
 
         VulkanRenderer& m_Renderer;
