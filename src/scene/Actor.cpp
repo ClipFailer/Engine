@@ -15,6 +15,7 @@
 #include "CustomComponent.hpp"
 #include "WidgetComponent.hpp"
 #include "AudioComponent.hpp"
+#include "ShaderComponent.hpp"
 #include "animation/SkeletalMeshComponent.hpp"
 #include "core/Log.hpp"
 #include <fstream>
@@ -103,6 +104,8 @@ namespace Engine {
                 c["metallic"] = mesh->Metallic;
                 c["roughness"] = mesh->Roughness;
                 c["cast_shadows"] = mesh->bCastShadows;
+                c["model_path"] = mesh->ModelPath;
+                c["texture_path"] = mesh->TexturePath;
             } else if (auto coll = dynamic_cast<CollisionComponent*>(comp.get())) {
                 c["shape"] = static_cast<uint8>(coll->Shape);
                 c["half_extents"] = {coll->BoxHalfExtents.x, coll->BoxHalfExtents.y, coll->BoxHalfExtents.z};
@@ -160,6 +163,14 @@ namespace Engine {
                 c["playback_speed"] = skel->PlaybackSpeed;
                 c["loop"] = skel->bLoop;
                 c["is_playing"] = skel->bIsPlaying;
+            } else if (auto sc = dynamic_cast<ShaderComponent*>(comp.get())) {
+                c["shader_name"] = sc->ShaderName;
+                c["shader_code"] = sc->ShaderCode;
+                c["active_everywhere"] = sc->bActiveEverywhere;
+                c["is_sphere_zone"] = sc->bIsSphereZone;
+                c["trigger_half_extents"] = {sc->TriggerHalfExtents.x, sc->TriggerHalfExtents.y, sc->TriggerHalfExtents.z};
+                c["trigger_radius"] = sc->TriggerRadius;
+                c["trigger_offset"] = {sc->TriggerOffset.x, sc->TriggerOffset.y, sc->TriggerOffset.z};
             }
             a["components"].push_back(c);
         }
@@ -209,6 +220,12 @@ namespace Engine {
                         if (c.contains("metallic")) mesh->Metallic = c["metallic"];
                         if (c.contains("roughness")) mesh->Roughness = c["roughness"];
                         if (c.contains("cast_shadows")) mesh->bCastShadows = c["cast_shadows"];
+                        if (c.contains("model_path") && !c["model_path"].get<std::string>().empty()) {
+                            mesh->LoadModel(c["model_path"].get<std::string>());
+                        }
+                        if (c.contains("texture_path")) {
+                            mesh->TexturePath = c["texture_path"].get<std::string>();
+                        }
                     } else if (compClass == "CollisionComponent") {
                         auto coll = GetComponent<CollisionComponent>();
                         if (!coll) coll = AddComponent<CollisionComponent>();
@@ -300,6 +317,20 @@ namespace Engine {
                         if (c.contains("playback_speed")) skel->PlaybackSpeed = c["playback_speed"];
                         if (c.contains("loop")) skel->bLoop = c["loop"];
                         if (c.contains("is_playing")) skel->bIsPlaying = c["is_playing"];
+                    } else if (compClass == "ShaderComponent") {
+                        auto sc = GetComponent<ShaderComponent>();
+                        if (!sc) sc = AddComponent<ShaderComponent>();
+                        if (c.contains("shader_name")) sc->ShaderName = c["shader_name"].get<std::string>();
+                        if (c.contains("shader_code")) sc->ShaderCode = c["shader_code"].get<std::string>();
+                        if (c.contains("active_everywhere")) sc->bActiveEverywhere = c["active_everywhere"].get<bool>();
+                        if (c.contains("is_sphere_zone")) sc->bIsSphereZone = c["is_sphere_zone"].get<bool>();
+                        if (c.contains("trigger_half_extents") && c["trigger_half_extents"].size() >= 3) {
+                            sc->TriggerHalfExtents = {c["trigger_half_extents"][0], c["trigger_half_extents"][1], c["trigger_half_extents"][2]};
+                        }
+                        if (c.contains("trigger_radius")) sc->TriggerRadius = c["trigger_radius"].get<float>();
+                        if (c.contains("trigger_offset") && c["trigger_offset"].size() >= 3) {
+                            sc->TriggerOffset = {c["trigger_offset"][0], c["trigger_offset"][1], c["trigger_offset"][2]};
+                        }
                     }
                 }
             }

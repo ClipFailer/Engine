@@ -5,6 +5,8 @@
 
 #include "ContentBrowserPanel.hpp"
 #include "scene/Scene.hpp"
+#include "scene/StaticMeshComponent.hpp"
+#include "scene/ShaderComponent.hpp"
 #include "reflection/Reflection.hpp"
 #include "core/Log.hpp"
 #include <imgui.h>
@@ -228,15 +230,23 @@ namespace Engine {
 
             // Drag drop target to move files up one level
             if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-                    std::filesystem::path srcPath = (const char*)payload->Data;
-                    std::filesystem::path dstPath = m_CurrentPath.parent_path() / srcPath.filename();
-                    std::error_code ec;
-                    std::filesystem::rename(srcPath, dstPath, ec);
-                    if (!ec) {
-                        LOG_INFO("Moved {} to parent folder", srcPath.filename().string());
+                auto HandleMoveUp = [&](const ImGuiPayload* payload) {
+                    if (payload && payload->Data) {
+                        std::filesystem::path srcPath = (const char*)payload->Data;
+                        if (std::filesystem::exists(srcPath)) {
+                            std::filesystem::path dstPath = m_CurrentPath.parent_path() / srcPath.filename();
+                            std::error_code ec;
+                            std::filesystem::rename(srcPath, dstPath, ec);
+                            if (!ec) {
+                                LOG_INFO("Moved {} to parent folder", srcPath.filename().string());
+                            }
+                        }
                     }
-                }
+                };
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) HandleMoveUp(payload);
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ACTOR_ASSET")) HandleMoveUp(payload);
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("TEXTURE_ASSET")) HandleMoveUp(payload);
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MODEL_ASSET")) HandleMoveUp(payload);
                 ImGui::EndDragDropTarget();
             }
 
@@ -265,15 +275,23 @@ namespace Engine {
 
                     // Drag and drop target onto folder node
                     if (ImGui::BeginDragDropTarget()) {
-                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-                            std::filesystem::path srcPath = (const char*)payload->Data;
-                            std::filesystem::path dstPath = entry.path() / srcPath.filename();
-                            std::error_code ec;
-                            std::filesystem::rename(srcPath, dstPath, ec);
-                            if (!ec) {
-                                LOG_INFO("Moved {} into {}", srcPath.filename().string(), dirName);
+                        auto HandleMoveInto = [&](const ImGuiPayload* payload) {
+                            if (payload && payload->Data) {
+                                std::filesystem::path srcPath = (const char*)payload->Data;
+                                if (std::filesystem::exists(srcPath)) {
+                                    std::filesystem::path dstPath = entry.path() / srcPath.filename();
+                                    std::error_code ec;
+                                    std::filesystem::rename(srcPath, dstPath, ec);
+                                    if (!ec) {
+                                        LOG_INFO("Moved {} into {}", srcPath.filename().string(), dirName);
+                                    }
+                                }
                             }
-                        }
+                        };
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) HandleMoveInto(payload);
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ACTOR_ASSET")) HandleMoveInto(payload);
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("TEXTURE_ASSET")) HandleMoveInto(payload);
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MODEL_ASSET")) HandleMoveInto(payload);
                         ImGui::EndDragDropTarget();
                     }
 
@@ -299,6 +317,19 @@ namespace Engine {
                 Actor temp(newFile.stem().string());
                 temp.SaveToAssetFile(newFile.string());
                 LOG_INFO("Created new Actor Blueprint asset: {}", newFile.string());
+            }
+            if (ImGui::MenuItem("Create Shader Volume (.actor)...")) {
+                std::string baseName = "ShaderVolume";
+                std::filesystem::path newFile = m_CurrentPath / (baseName + ".actor");
+                int counter = 1;
+                while (std::filesystem::exists(newFile)) {
+                    newFile = m_CurrentPath / (baseName + std::to_string(counter++) + ".actor");
+                }
+                Actor temp(newFile.stem().string(), false);
+                temp.bIsVisible = false;
+                temp.AddComponent<ShaderComponent>();
+                temp.SaveToAssetFile(newFile.string());
+                LOG_INFO("Created new Shader Volume asset: {}", newFile.string());
             }
             if (ImGui::MenuItem("Create Class...")) {
                 m_bShowCreateClassWizard = true;
@@ -340,15 +371,22 @@ namespace Engine {
 
                 bool isDir = entry.is_directory();
                 std::string ext = entry.path().extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
                 bool isCppOrHeader = (ext == ".cpp" || ext == ".hpp" || ext == ".h");
                 bool isActorAsset = (ext == ".actor");
                 bool isUIWidget = (ext == ".ui" || ext == ".uwidget");
                 bool isScene = (ext == ".json" || ext == ".scene");
+                bool isTexture = (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga");
+                bool isModel = (ext == ".obj" || ext == ".fbx" || ext == ".gltf");
+                bool isShader = (ext == ".glsl" || ext == ".vert" || ext == ".frag");
 
                 ImVec4 btnColor = isDir ? ImVec4(0.22f, 0.35f, 0.48f, 1.0f) :
                                   isActorAsset ? ImVec4(0.2f, 0.45f, 0.8f, 1.0f) :
                                   isUIWidget ? ImVec4(0.18f, 0.52f, 0.50f, 1.0f) :
                                   isCppOrHeader ? ImVec4(0.25f, 0.40f, 0.25f, 1.0f) :
+                                  isTexture ? ImVec4(0.55f, 0.25f, 0.65f, 1.0f) :
+                                  isModel ? ImVec4(0.28f, 0.55f, 0.38f, 1.0f) :
+                                  isShader ? ImVec4(0.75f, 0.45f, 0.15f, 1.0f) :
                                   isScene ? ImVec4(0.7f, 0.45f, 0.15f, 1.0f) :
                                   ImVec4(0.18f, 0.18f, 0.22f, 1.0f);
 
@@ -357,6 +395,9 @@ namespace Engine {
                                         isUIWidget ? "[UI]" :
                                         (ext == ".cpp") ? "[CPP]" :
                                         (ext == ".hpp" || ext == ".h") ? "[HPP]" :
+                                        isTexture ? "[TEX]" :
+                                        isModel ? "[3D]" :
+                                        isShader ? "[SHDR]" :
                                         isScene ? "[SCENE]" : "[FILE]";
 
                 ImGui::PushStyleColor(ImGuiCol_Button, btnColor);
@@ -388,7 +429,7 @@ namespace Engine {
                         if (OnOpenScene) {
                             OnOpenScene(entry.path());
                         }
-                    } else if (isCppOrHeader) {
+                    } else if (isCppOrHeader || isShader || isModel) {
                         // Double-click opens internally in CodeEditorWindow
                         if (OnFileDoubleClicked) {
                             OnFileDoubleClicked(entry.path());
@@ -398,16 +439,21 @@ namespace Engine {
 
                 // Drag source: drag onto 3D viewport or folders
                 if (ImGui::BeginDragDropSource()) {
+                    std::string pathStr = entry.path().string();
                     if (isActorAsset) {
-                        std::string pathStr = entry.path().string();
                         ImGui::SetDragDropPayload("ACTOR_ASSET", pathStr.c_str(), pathStr.size() + 1);
                         ImGui::Text("Spawn Actor Asset: %s", filename.c_str());
                     } else if (isCppOrHeader) {
                         std::string stem = entry.path().stem().string();
                         ImGui::SetDragDropPayload("ACTOR_ASSET", stem.c_str(), stem.size() + 1);
                         ImGui::Text("Spawn C++ Actor: %s", stem.c_str());
+                    } else if (isTexture) {
+                        ImGui::SetDragDropPayload("TEXTURE_ASSET", pathStr.c_str(), pathStr.size() + 1);
+                        ImGui::Text("Apply Texture: %s", filename.c_str());
+                    } else if (isModel) {
+                        ImGui::SetDragDropPayload("MODEL_ASSET", pathStr.c_str(), pathStr.size() + 1);
+                        ImGui::Text("Apply 3D Mesh Model: %s", filename.c_str());
                     } else {
-                        std::string pathStr = entry.path().string();
                         ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", pathStr.c_str(), pathStr.size() + 1);
                         ImGui::Text("Move %s", filename.c_str());
                     }
@@ -416,15 +462,23 @@ namespace Engine {
 
                 // Drag target: drop onto a folder to move item into it
                 if (isDir && ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-                        std::filesystem::path srcPath = (const char*)payload->Data;
-                        std::filesystem::path dstPath = entry.path() / srcPath.filename();
-                        std::error_code ec;
-                        std::filesystem::rename(srcPath, dstPath, ec);
-                        if (!ec) {
-                            LOG_INFO("Moved {} into {}", srcPath.filename().string(), filename);
+                    auto HandleMoveInto = [&](const ImGuiPayload* payload) {
+                        if (payload && payload->Data) {
+                            std::filesystem::path srcPath = (const char*)payload->Data;
+                            if (std::filesystem::exists(srcPath)) {
+                                std::filesystem::path dstPath = entry.path() / srcPath.filename();
+                                std::error_code ec;
+                                std::filesystem::rename(srcPath, dstPath, ec);
+                                if (!ec) {
+                                    LOG_INFO("Moved {} into {}", srcPath.filename().string(), filename);
+                                }
+                            }
                         }
-                    }
+                    };
+                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) HandleMoveInto(p);
+                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ACTOR_ASSET")) HandleMoveInto(p);
+                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("TEXTURE_ASSET")) HandleMoveInto(p);
+                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("MODEL_ASSET")) HandleMoveInto(p);
                     ImGui::EndDragDropTarget();
                 }
 
@@ -495,6 +549,36 @@ namespace Engine {
                     } else if (isScene) {
                         if (ImGui::MenuItem("Open Scene in Editor")) {
                             if (OnOpenScene) OnOpenScene(entry.path());
+                        }
+                        if (ImGui::MenuItem("Open in Internal Code Editor")) {
+                            if (OnFileDoubleClicked) OnFileDoubleClicked(entry.path());
+                        }
+                    } else if (isModel) {
+                        if (ImGui::MenuItem("Spawn 3D Model in Scene")) {
+                            auto actor = scene.SpawnActor(stemName);
+                            actor->Transform.Position = glm::vec3(0.0f, 1.5f, 0.0f);
+                            if (auto mesh = actor->GetComponent<StaticMeshComponent>()) {
+                                mesh->LoadModel(entry.path().string());
+                            }
+                            LOG_INFO("Spawned Actor '{}' with custom 3D model: {}", stemName, entry.path().string());
+                        }
+                        if (ImGui::MenuItem("Open in Internal Code Editor")) {
+                            if (OnFileDoubleClicked) OnFileDoubleClicked(entry.path());
+                        }
+                    } else if (isShader) {
+                        if (ImGui::MenuItem("Create Shader Volume Actor (.actor)")) {
+                            std::filesystem::path actorFile = entry.path().parent_path() / (stemName + "Volume.actor");
+                            Actor temp(stemName + "Volume", false);
+                            temp.bIsVisible = false;
+                            auto sc = temp.AddComponent<ShaderComponent>();
+                            std::ifstream f(entry.path());
+                            if (f.is_open()) {
+                                std::stringstream buffer;
+                                buffer << f.rdbuf();
+                                sc->ShaderCode = buffer.str();
+                            }
+                            temp.SaveToAssetFile(actorFile.string());
+                            LOG_INFO("Created Shader Volume Actor: {}", actorFile.string());
                         }
                         if (ImGui::MenuItem("Open in Internal Code Editor")) {
                             if (OnFileDoubleClicked) OnFileDoubleClicked(entry.path());

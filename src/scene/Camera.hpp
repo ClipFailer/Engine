@@ -37,6 +37,18 @@ namespace Engine {
         void SetPosition(const glm::vec3& pos) { m_Position = pos; UpdateMatrices(); }
         void SetRotation(const glm::vec3& rot) { m_Rotation = rot; UpdateMatrices(); }
 
+        /**
+         * @brief Centers and focuses camera on a target point at a specified distance.
+         * @param target World coordinates to focus on.
+         * @param distance Distance from target along view direction.
+         */
+        void FocusOn(const glm::vec3& target, float distance = 3.5f) {
+            glm::quat q = glm::quat(glm::radians(m_Rotation));
+            glm::vec3 forward = q * glm::vec3(0.0f, 0.0f, -1.0f);
+            m_Position = target - forward * (std::max)(1.0f, distance);
+            UpdateMatrices();
+        }
+
         [[nodiscard]] float GetFOV() const noexcept { return m_FOV; }
         void SetFOV(float fov) { m_FOV = fov; UpdateMatrices(); }
 

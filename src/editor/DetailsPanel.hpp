@@ -37,6 +37,8 @@ namespace Engine {
         void DrawTransformControl(const std::string& label, glm::vec3& values, float resetValue = 0.0f);
         void DrawReflectedProperty(const PropertyDescriptor& prop, void* instance);
         void DrawUnityCollisionControls(class CollisionComponent& coll, Actor* actor);
+        void DrawStaticMeshControls(class StaticMeshComponent& mesh);
+        void DrawShaderComponentControls(class ShaderComponent& sc);
 
         Project* m_Project{nullptr};
         bool m_bShowCreateComponentModal{false};

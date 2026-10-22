@@ -193,6 +193,16 @@ namespace Engine {
                     body->LinearVelocity += Gravity * dt;
                 }
 
+                // Air resistance / linear damping
+                body->LinearVelocity *= std::clamp(1.0f - 0.05f * dt, 0.0f, 1.0f);
+                body->AngularVelocity *= std::clamp(1.0f - 0.1f * dt, 0.0f, 1.0f);
+
+                // Resting body threshold (sleep stabilization to eliminate micro-jitter)
+                if (glm::length(body->LinearVelocity) < 0.01f && std::abs(body->LinearVelocity.y) < 0.02f) {
+                    body->LinearVelocity.x = 0.0f;
+                    body->LinearVelocity.z = 0.0f;
+                }
+
                 actor->Transform.Position += body->LinearVelocity * dt;
                 actor->Transform.Rotation += body->AngularVelocity * dt;
             }

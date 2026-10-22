@@ -7,6 +7,7 @@
 #include "scene/StaticMeshComponent.hpp"
 #include "scene/LightComponent.hpp"
 #include "scene/RigidBodyComponent.hpp"
+#include "scene/ShaderActor.hpp"
 #include "core/Log.hpp"
 #include <imgui.h>
 #include <filesystem>
@@ -119,6 +120,11 @@ namespace Engine {
                         pl->Intensity = 2.0f;
                     }
                     m_SelectedActor = light;
+                }
+                if (ImGui::MenuItem("Shader Volume (Trigger / Post-Process)")) {
+                    auto shaderActor = scene.SpawnActor<ShaderActor>("Shader Volume");
+                    shaderActor->Transform.Position = glm::vec3(0.0f, 1.0f, 0.0f);
+                    m_SelectedActor = shaderActor;
                 }
                 if (ImGui::MenuItem("Empty Actor")) {
                     m_SelectedActor = scene.SpawnActor("Empty Actor");

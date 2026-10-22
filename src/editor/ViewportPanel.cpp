@@ -6,6 +6,7 @@
 #include "ViewportPanel.hpp"
 #include "scene/PositionComponent.hpp"
 #include "scene/WidgetComponent.hpp"
+#include "scene/StaticMeshComponent.hpp"
 #include "core/Log.hpp"
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -66,6 +67,35 @@ namespace Engine {
                 }
                 LOG_INFO("Spawned Actor '{}' into 3D Viewport via Drag-and-Drop", spawned ? spawned->GetName() : payloadData);
             }
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MODEL_ASSET")) {
+                std::string path = (const char*)payload->Data;
+                if (selectedActor) {
+                    auto mesh = selectedActor->GetComponent<StaticMeshComponent>();
+                    if (!mesh) mesh = selectedActor->AddComponent<StaticMeshComponent>();
+                    mesh->LoadModel(path);
+                    LOG_INFO("Applied 3D Model '{}' to selected Actor '{}'", path, selectedActor->GetName());
+                } else {
+                    glm::vec3 spawnPos = m_Camera.GetPosition() + glm::vec3(0.0f, 0.0f, -4.0f);
+                    spawnPos.y = (std::max)(spawnPos.y, 1.0f);
+                    std::filesystem::path p(path);
+                    auto spawned = scene.SpawnActor(p.stem().string());
+                    spawned->Transform.Position = spawnPos;
+                    if (auto mesh = spawned->GetComponent<StaticMeshComponent>()) {
+                        mesh->LoadModel(path);
+                    }
+                    if (OnActorSelected) OnActorSelected(spawned);
+                    LOG_INFO("Spawned Actor '{}' with model '{}' into 3D Viewport", spawned->GetName(), path);
+                }
+            }
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("TEXTURE_ASSET")) {
+                std::string path = (const char*)payload->Data;
+                if (selectedActor) {
+                    auto mesh = selectedActor->GetComponent<StaticMeshComponent>();
+                    if (!mesh) mesh = selectedActor->AddComponent<StaticMeshComponent>();
+                    mesh->LoadTexture(path);
+                    LOG_INFO("Applied Texture '{}' to selected Actor '{}'", path, selectedActor->GetName());
+                }
+            }
             ImGui::EndDragDropTarget();
         }
 
@@ -118,6 +148,9 @@ namespace Engine {
                     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && OnActorDoubleClicked) {
                         OnActorDoubleClicked(hit.HitActor);
                     }
+                } else {
+                    // Clicked in empty space -> deselect all objects
+                    if (OnActorSelected) OnActorSelected(nullptr);
                 }
             }
         }
@@ -128,6 +161,13 @@ namespace Engine {
 
         ImGuiIO& io = ImGui::GetIO();
         float dt = io.DeltaTime;
+
+        // Focus camera on selected actor (Unreal Engine style 'F' key)
+        if (selectedActor && ImGui::IsKeyPressed(ImGuiKey_F)) {
+            float focusDist = (std::max)(2.0f, glm::length(selectedActor->Transform.Scale) * 2.2f);
+            m_Camera.FocusOn(selectedActor->Transform.Position, focusDist);
+            LOG_INFO("Camera focused on actor '{}' (F key)", selectedActor->GetName());
+        }
 
         // Delete selected actor on Delete key
         if (selectedActor && ImGui::IsKeyPressed(ImGuiKey_Delete)) {

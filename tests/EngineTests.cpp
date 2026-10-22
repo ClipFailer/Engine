@@ -29,8 +29,14 @@
 #include "ui/UIModule.hpp"
 #include "animation/AnimationModule.hpp"
 #include "animation/SkeletalMeshComponent.hpp"
+#include "scene/MeshLoader.hpp"
+#include "scene/ShaderComponent.hpp"
+#include "scene/ShaderActor.hpp"
+#include "scene/Camera.hpp"
+#include "rhi/RenderSettings.hpp"
 
 #include <iostream>
+#include <fstream>
 #include <cassert>
 #include <cmath>
 
@@ -509,6 +515,132 @@ namespace EngineTests {
         return true;
     }
 
+    bool TestOBJMeshLoadingAndTextures() {
+        std::filesystem::path objPath = "test_triangle.obj";
+        std::ofstream out(objPath);
+        out << "# OBJ Test File\n"
+            << "v 0.0 1.0 0.0\n"
+            << "v -1.0 -1.0 0.0\n"
+            << "v 1.0 -1.0 0.0\n"
+            << "vt 0.5 1.0\n"
+            << "vt 0.0 0.0\n"
+            << "vt 1.0 0.0\n"
+            << "vn 0.0 0.0 1.0\n"
+            << "f 1/1/1 2/2/1 3/3/1\n";
+        out.close();
+
+        Engine::MeshGeometry geo;
+        TEST_ASSERT(Engine::MeshLoader::LoadOBJ(objPath.string(), geo), "MeshLoader must successfully parse valid OBJ");
+        TEST_ASSERT(geo.Vertices.size() == 3, "Mesh must contain exactly 3 vertices");
+        TEST_ASSERT(geo.Indices.size() == 3, "Mesh must contain 3 indices");
+        TEST_ASSERT(std::abs(geo.Vertices[0].Position.y - 1.0f) < 0.001f, "Vertex 0 Position Y mismatch");
+        TEST_ASSERT(std::abs(geo.Vertices[0].TexCoord.x - 0.5f) < 0.001f, "Vertex 0 UV X mismatch");
+
+        // Test StaticMeshComponent LoadModel and LoadTexture
+        Engine::StaticMeshComponent meshComp;
+        TEST_ASSERT(meshComp.LoadModel(objPath.string()), "StaticMeshComponent::LoadModel failed");
+        TEST_ASSERT(meshComp.MeshType == Engine::PrimitiveType::Custom, "MeshType should be PrimitiveType::Custom");
+        TEST_ASSERT(meshComp.GetGeometry().Vertices.size() == 3, "Custom geometry must have 3 vertices");
+
+        // Mock texture file
+        std::filesystem::path texPath = "test_texture.png";
+        std::ofstream texOut(texPath);
+        texOut << "dummy png data";
+        texOut.close();
+
+        TEST_ASSERT(meshComp.LoadTexture(texPath.string()), "StaticMeshComponent::LoadTexture failed");
+        TEST_ASSERT(meshComp.TexturePath == texPath.string(), "TexturePath mismatch");
+
+        // Persistence test in Actor
+        Engine::Actor actor("OBJTestActor");
+        auto actorMesh = actor.GetComponent<Engine::StaticMeshComponent>();
+        actorMesh->LoadModel(objPath.string());
+        actorMesh->LoadTexture(texPath.string());
+
+        nlohmann::json j = actor.Serialize();
+        Engine::Actor restored("RestoredActor", false);
+        restored.Deserialize(j);
+
+        auto restoredMesh = restored.GetComponent<Engine::StaticMeshComponent>();
+        TEST_ASSERT(restoredMesh != nullptr, "Restored actor missing StaticMeshComponent");
+        TEST_ASSERT(restoredMesh->ModelPath == objPath.string(), "Restored ModelPath mismatch");
+        TEST_ASSERT(restoredMesh->TexturePath == texPath.string(), "Restored TexturePath mismatch");
+        TEST_ASSERT(restoredMesh->GetGeometry().Vertices.size() == 3, "Restored geometry must match loaded OBJ");
+
+        std::filesystem::remove(objPath);
+        std::filesystem::remove(texPath);
+        return true;
+    }
+
+    bool TestShaderComponentAndTriggerVolume() {
+        Engine::ShaderActor shaderActor("ScreenVolume");
+        auto sc = shaderActor.GetShaderComponent();
+        TEST_ASSERT(sc != nullptr, "ShaderActor must have ShaderComponent attached");
+        TEST_ASSERT(!shaderActor.bIsVisible, "ShaderActor should be invisible on the level");
+
+        sc->bActiveEverywhere = false;
+        sc->bIsSphereZone = false;
+        sc->TriggerHalfExtents = glm::vec3(5.0f, 5.0f, 5.0f);
+        sc->TriggerOffset = glm::vec3(0.0f);
+
+        glm::vec3 actorPos(0.0f, 0.0f, 0.0f);
+        glm::vec3 insidePos(2.0f, 3.0f, -4.0f);
+        glm::vec3 outsidePos(10.0f, 0.0f, 0.0f);
+
+        TEST_ASSERT(sc->IsActiveAtPosition(insidePos, actorPos), "Camera inside box trigger volume must activate shader");
+        TEST_ASSERT(!sc->IsActiveAtPosition(outsidePos, actorPos), "Camera outside box trigger volume must NOT activate shader");
+
+        // Sphere Zone
+        sc->bIsSphereZone = true;
+        sc->TriggerRadius = 4.0f;
+        TEST_ASSERT(sc->IsActiveAtPosition(glm::vec3(0.0f, 3.0f, 0.0f), actorPos), "Camera inside sphere radius must activate shader");
+        TEST_ASSERT(!sc->IsActiveAtPosition(glm::vec3(0.0f, 5.0f, 0.0f), actorPos), "Camera outside sphere radius must NOT activate shader");
+
+        // Active Everywhere toggle
+        sc->bActiveEverywhere = true;
+        TEST_ASSERT(sc->IsActiveAtPosition(glm::vec3(100.0f, 200.0f, 300.0f), actorPos), "ActiveEverywhere must activate across entire scene");
+
+        // Preset loading
+        sc->LoadPreset("NightVision");
+        TEST_ASSERT(sc->ShaderCode.find("vec3(0.1, 0.95, 0.2)") != std::string::npos, "NightVision preset code must contain green tint");
+
+        // Serialization & Deserialization
+        nlohmann::json j = shaderActor.Serialize();
+        Engine::Actor restored("RestoredVolume", false);
+        restored.Deserialize(j);
+        auto restoredSC = restored.GetComponent<Engine::ShaderComponent>();
+        TEST_ASSERT(restoredSC != nullptr, "Restored actor missing ShaderComponent");
+        TEST_ASSERT(restoredSC->bActiveEverywhere == true, "Restored bActiveEverywhere mismatch");
+        TEST_ASSERT(restoredSC->bIsSphereZone == true, "Restored bIsSphereZone mismatch");
+        TEST_ASSERT(std::abs(restoredSC->TriggerRadius - 4.0f) < 0.01f, "Restored TriggerRadius mismatch");
+        TEST_ASSERT(restoredSC->ShaderCode.find("vec3(0.1, 0.95, 0.2)") != std::string::npos, "Restored ShaderCode mismatch");
+
+        return true;
+    }
+
+    bool TestCameraFocusAndRenderSettings() {
+        Engine::Camera cam;
+        glm::vec3 target(10.0f, 5.0f, -15.0f);
+        cam.FocusOn(target, 6.0f);
+
+        glm::vec3 camPos = cam.GetPosition();
+        float dist = glm::distance(camPos, target);
+        TEST_ASSERT(std::abs(dist - 6.0f) < 0.01f, "Camera must be placed exactly focusDist units away from target");
+
+        // RenderSettings preset application
+        auto& rs = Engine::RenderSettings::Get();
+        rs.ApplyPreset(Engine::RenderQualityPreset::Cinematic);
+        TEST_ASSERT(rs.AAMode == Engine::AntiAliasingMode::MSAA_4x, "Cinematic preset must enable MSAA 4x");
+        TEST_ASSERT(rs.ShadowResolution == 4096, "Cinematic preset must have 4096 shadow map resolution");
+        TEST_ASSERT(rs.bEnableAmbientOcclusion == true, "Cinematic preset must enable SSAO");
+
+        rs.ApplyPreset(Engine::RenderQualityPreset::High);
+        TEST_ASSERT(rs.AAMode == Engine::AntiAliasingMode::FXAA, "High preset must enable FXAA");
+        TEST_ASSERT(rs.ShadowResolution == 2048, "High preset must have 2048 shadow map resolution");
+
+        return true;
+    }
+
 } // namespace EngineTests
 
 int main() {
@@ -517,7 +649,7 @@ int main() {
     std::cout << "========================================\n";
 
     int passed = 0;
-    int total = 14;
+    int total = 17;
 
     auto runTest = [&](const char* name, bool(*func)()) {
         std::cout << "[RUNNING] " << name << "... ";
@@ -543,6 +675,9 @@ int main() {
     runTest("Scene Persistence, Coordinates & Component State", EngineTests::TestSceneSerializationAndCoordinates);
     runTest("Actor-to-Actor 3D Collision Resolution", EngineTests::TestActorToActorCollision);
     runTest("Actor Asset (.actor) Persistence & Reinstantiation", EngineTests::TestActorAssetSerializationAndReinstantiation);
+    runTest("3D OBJ Mesh Loading & Texture Assignment", EngineTests::TestOBJMeshLoadingAndTextures);
+    runTest("Shader Trigger Volume & Global Mode", EngineTests::TestShaderComponentAndTriggerVolume);
+    runTest("Camera Focus & Graphics Render Settings", EngineTests::TestCameraFocusAndRenderSettings);
 
     std::cout << "========================================\n";
     std::cout << "Tests Passed: " << passed << " / " << total << "\n";

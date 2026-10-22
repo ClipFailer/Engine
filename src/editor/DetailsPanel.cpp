@@ -16,6 +16,7 @@
 #include "scene/WidgetComponent.hpp"
 #include "scene/CustomComponent.hpp"
 #include "animation/SkeletalMeshComponent.hpp"
+#include "scene/ShaderComponent.hpp"
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -77,6 +78,10 @@ namespace Engine {
                 }
                 if (auto coll = dynamic_cast<CollisionComponent*>(comp.get())) {
                     DrawUnityCollisionControls(*coll, actor);
+                } else if (auto mesh = dynamic_cast<StaticMeshComponent*>(comp.get())) {
+                    DrawStaticMeshControls(*mesh);
+                } else if (auto sc = dynamic_cast<ShaderComponent*>(comp.get())) {
+                    DrawShaderComponentControls(*sc);
                 } else {
                     const ClassDescriptor* clsDesc = TypeRegistry::Get().FindClass(comp->GetClassName());
                     if (clsDesc) {
@@ -128,6 +133,9 @@ namespace Engine {
             }
             if (ImGui::MenuItem("Widget Component (HTML+CSS UI)")) {
                 actor->AddComponent<WidgetComponent>();
+            }
+            if (ImGui::MenuItem("Shader Component (Trigger Volume / Post-Process)")) {
+                actor->AddComponent<ShaderComponent>();
             }
 
             ImGui::Separator();
@@ -374,6 +382,138 @@ namespace Engine {
             // 6. Physics Material Settings
             ImGui::SliderFloat("Bounciness (Restitution)", &coll.Restitution, 0.0f, 1.0f, "%.2f");
             ImGui::SliderFloat("Dynamic Friction", &coll.Friction, 0.0f, 1.0f, "%.2f");
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+    }
+
+    void DetailsPanel::DrawStaticMeshControls(StaticMeshComponent& mesh) {
+        // 1. Primitive Type Combo
+        const char* types[] = { "Cube", "Sphere", "Plane", "Custom (3D OBJ Model)" };
+        int currentType = static_cast<int>(mesh.MeshType);
+        if (ImGui::Combo("Mesh Type", &currentType, types, IM_ARRAYSIZE(types))) {
+            mesh.MeshType = static_cast<PrimitiveType>(currentType);
+        }
+
+        // 2. 3D Model Path Slot
+        ImGui::Text("3D Model (.obj):");
+        char modelBuf[260];
+        std::strncpy(modelBuf, mesh.ModelPath.c_str(), sizeof(modelBuf) - 1);
+        modelBuf[sizeof(modelBuf) - 1] = '\0';
+        if (ImGui::InputText("##ModelPath", modelBuf, sizeof(modelBuf))) {
+            mesh.ModelPath = modelBuf;
+            if (!mesh.ModelPath.empty()) {
+                mesh.LoadModel(mesh.ModelPath);
+            }
+        }
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MODEL_ASSET")) {
+                std::string path = (const char*)payload->Data;
+                mesh.LoadModel(path);
+            }
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+                std::string path = (const char*)payload->Data;
+                if (path.ends_with(".obj")) {
+                    mesh.LoadModel(path);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Drag & Drop an .obj file from Content Browser here");
+        }
+
+        // 3. Texture Image Path Slot
+        ImGui::Text("Texture Image (.png, .jpg, .bmp):");
+        char texBuf[260];
+        std::strncpy(texBuf, mesh.TexturePath.c_str(), sizeof(texBuf) - 1);
+        texBuf[sizeof(texBuf) - 1] = '\0';
+        if (ImGui::InputText("##TexturePath", texBuf, sizeof(texBuf))) {
+            mesh.TexturePath = texBuf;
+            if (!mesh.TexturePath.empty()) {
+                mesh.LoadTexture(mesh.TexturePath);
+            }
+        }
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("TEXTURE_ASSET")) {
+                std::string path = (const char*)payload->Data;
+                mesh.LoadTexture(path);
+            }
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+                std::string path = (const char*)payload->Data;
+                if (path.ends_with(".png") || path.ends_with(".jpg") || path.ends_with(".jpeg") || path.ends_with(".bmp") || path.ends_with(".tga")) {
+                    mesh.LoadTexture(path);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Drag & Drop a texture image from Content Browser here");
+        }
+
+        // 4. Material properties
+        ImGui::ColorEdit4("Base Color", &mesh.BaseColor.r);
+        ImGui::SliderFloat("Metallic", &mesh.Metallic, 0.0f, 1.0f);
+        ImGui::SliderFloat("Roughness", &mesh.Roughness, 0.0f, 1.0f);
+        ImGui::Checkbox("Cast Dynamic Shadows", &mesh.bCastShadows);
+    }
+
+    void DetailsPanel::DrawShaderComponentControls(ShaderComponent& sc) {
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.12f, 0.14f, 0.18f, 1.0f));
+        if (ImGui::BeginChild("ShaderComponentBox", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY)) {
+            ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Programmable GLSL Shader Trigger Volume");
+            ImGui::Separator();
+
+            // 1. Active Everywhere toggle
+            ImGui::Checkbox("Active Everywhere (Scene-Wide)", &sc.bActiveEverywhere);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("If enabled, this shader affects the camera across the entire scene, ignoring trigger bounds.");
+            }
+
+            // 2. Trigger Zone configuration (if not active everywhere)
+            if (!sc.bActiveEverywhere) {
+                ImGui::Spacing();
+                ImGui::TextDisabled("Trigger Activation Boundary:");
+                const char* shapes[] = { "Box Volume (AABB)", "Spherical Volume" };
+                int shapeIdx = sc.bIsSphereZone ? 1 : 0;
+                if (ImGui::Combo("Zone Shape", &shapeIdx, shapes, IM_ARRAYSIZE(shapes))) {
+                    sc.bIsSphereZone = (shapeIdx == 1);
+                }
+
+                DrawTransformControl("Offset", sc.TriggerOffset, 0.0f);
+                if (sc.bIsSphereZone) {
+                    ImGui::DragFloat("Trigger Radius", &sc.TriggerRadius, 0.1f, 0.1f, 500.0f, "%.2f m");
+                } else {
+                    DrawTransformControl("Half Extents", sc.TriggerHalfExtents, 5.0f);
+                }
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+
+            // 3. Shader Presets
+            ImGui::Text("Shader Presets:");
+            const char* presets[] = { "Custom / Select Preset...", "Vignette", "NightVision", "Grayscale", "Sepia", "Invert" };
+            static int selectedPreset = 0;
+            if (ImGui::Combo("Presets", &selectedPreset, presets, IM_ARRAYSIZE(presets))) {
+                if (selectedPreset > 0) {
+                    sc.LoadPreset(presets[selectedPreset]);
+                }
+            }
+
+            // 4. Multiline GLSL code editor
+            ImGui::Spacing();
+            ImGui::Text("GLSL Fragment Source Code:");
+            static char codeBuffer[16384];
+            std::strncpy(codeBuffer, sc.ShaderCode.c_str(), sizeof(codeBuffer) - 1);
+            codeBuffer[sizeof(codeBuffer) - 1] = '\0';
+            if (ImGui::InputTextMultiline("##GLSLCode", codeBuffer, sizeof(codeBuffer), ImVec2(-1, 160.0f))) {
+                sc.ShaderCode = codeBuffer;
+            }
+
+            if (ImGui::Button("Reset to Default Shader", ImVec2(180, 24))) {
+                sc.ShaderCode = ShaderComponent::GetDefaultShaderCode();
+            }
         }
         ImGui::EndChild();
         ImGui::PopStyleColor();

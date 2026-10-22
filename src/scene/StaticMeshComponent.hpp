@@ -35,9 +35,27 @@ namespace Engine {
         float Metallic{0.1f};                         ///< Surface metallic factor [0..1].
         float Roughness{0.5f};                        ///< Surface roughness factor [0..1].
         bool bCastShadows{true};                      ///< Shadow casting flag.
+        std::string ModelPath{};                      ///< File path to imported 3D model (.obj)
+        std::string TexturePath{};                    ///< File path to diffuse/albedo texture image (.png, .jpg, .bmp)
+
+        MeshGeometry CustomGeometry;                  ///< Uploaded or imported vertex/index geometry
 
         /**
-         * @brief Returns the procedural geometry for the selected primitive type.
+         * @brief Loads an external 3D model file into this component.
+         * @param filepath Path to 3D model on disk.
+         * @return True if model was imported successfully.
+         */
+        bool LoadModel(const std::string& filepath);
+
+        /**
+         * @brief Assigns an albedo texture image file to this mesh component.
+         * @param filepath Path to texture on disk.
+         * @return True if texture file exists and assigned.
+         */
+        bool LoadTexture(const std::string& filepath);
+
+        /**
+         * @brief Returns the procedural or custom geometry for the selected primitive type.
          * @return MeshGeometry with vertices and indices.
          */
         [[nodiscard]] MeshGeometry GetGeometry() const;
