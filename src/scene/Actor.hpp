@@ -22,7 +22,7 @@ namespace Engine {
         GENERATED_BODY()
     public:
         Actor();
-        explicit Actor(std::string name);
+        explicit Actor(std::string name, bool bAttachDefaultComponents = true);
         ~Actor() override = default;
 
         /**
@@ -81,10 +81,23 @@ namespace Engine {
         }
 
         /**
-         * @brief Removes a component from this actor.
+         * @brief Removes a component from this actor by pointer.
          * @param comp Pointer to component.
          */
         void RemoveComponent(Component* comp);
+
+        /**
+         * @brief Removes all components of type T from this actor.
+         * @tparam T Component class type.
+         */
+        template<typename T>
+        void RemoveComponent() {
+            auto it = std::remove_if(m_Components.begin(), m_Components.end(),
+                [](const std::unique_ptr<Component>& ptr) {
+                    return dynamic_cast<T*>(ptr.get()) != nullptr;
+                });
+            m_Components.erase(it, m_Components.end());
+        }
 
         Transform Transform; ///< Actor local/world spatial transformation.
         std::string Tag{"Default"}; ///< Identification tag (e.g., Player, Enemy, Obstacle).

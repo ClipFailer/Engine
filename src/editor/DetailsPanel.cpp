@@ -4,6 +4,7 @@
  */
 
 #include "DetailsPanel.hpp"
+#include "core/Log.hpp"
 #include "scene/StaticMeshComponent.hpp"
 #include "scene/LightComponent.hpp"
 #include "scene/RigidBodyComponent.hpp"
@@ -44,6 +45,10 @@ namespace Engine {
             DrawTransformControl("Location", actor->Transform.Position, 0.0f);
             DrawTransformControl("Rotation", actor->Transform.Rotation, 0.0f);
             DrawTransformControl("Scale",    actor->Transform.Scale,    1.0f);
+
+            if (auto posComp = actor->GetComponent<PositionComponent>()) {
+                posComp->Transform = actor->Transform;
+            }
         }
 
         // 3. Components & Reflected Properties
@@ -94,6 +99,34 @@ namespace Engine {
             }
             if (ImGui::MenuItem("Skeletal Mesh Component")) {
                 actor->AddComponent<SkeletalMeshComponent>();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Create New C++ Component Class...")) {
+                m_bShowCreateComponentModal = true;
+            }
+            ImGui::EndPopup();
+        }
+
+        // Modal: Create C++ Component Class from Details Panel
+        if (m_bShowCreateComponentModal) {
+            ImGui::OpenPopup("Create C++ Component Class###DetailsCreateCompModal");
+        }
+        if (ImGui::BeginPopupModal("Create C++ Component Class###DetailsCreateCompModal", &m_bShowCreateComponentModal, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Enter new Component class name (derived from Engine::Component):");
+            ImGui::InputText("##DetailsCompName", m_NewComponentName, sizeof(m_NewComponentName));
+            ImGui::Spacing();
+
+            if (ImGui::Button("Create Component Class", ImVec2(160, 0))) {
+                if (m_Project && m_Project->GenerateComponentClass(m_NewComponentName)) {
+                    LOG_INFO("Created custom C++ Component: {}", m_NewComponentName);
+                }
+                m_bShowCreateComponentModal = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(100, 0))) {
+                m_bShowCreateComponentModal = false;
+                ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }

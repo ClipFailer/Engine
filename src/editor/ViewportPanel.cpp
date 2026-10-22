@@ -4,6 +4,7 @@
  */
 
 #include "ViewportPanel.hpp"
+#include "scene/PositionComponent.hpp"
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -55,19 +56,21 @@ namespace Engine {
 
             if (relX >= 0.0f && relX <= m_ViewportSize.x && relY >= 0.0f && relY <= m_ViewportSize.y) {
                 float ndcX = (relX / m_ViewportSize.x) * 2.0f - 1.0f;
-                float ndcY = 1.0f - (relY / m_ViewportSize.y) * 2.0f; // Invert Y
+                float ndcY = 1.0f - (relY / m_ViewportSize.y) * 2.0f;
 
-                glm::mat4 invProj = glm::inverse(m_Camera.GetProjectionMatrix());
-                glm::mat4 invView = glm::inverse(m_Camera.GetViewMatrix());
+                float aspect = m_ViewportSize.x / m_ViewportSize.y;
+                glm::mat4 stdProj = glm::perspective(glm::radians(m_Camera.GetFOV()), aspect, m_Camera.GetNearClip(), m_Camera.GetFarClip());
+                glm::mat4 invVP = glm::inverse(stdProj * m_Camera.GetViewMatrix());
 
-                glm::vec4 clipCoords(ndcX, ndcY, -1.0f, 1.0f);
-                glm::vec4 eyeCoords = invProj * clipCoords;
-                eyeCoords = glm::vec4(eyeCoords.x, eyeCoords.y, -1.0f, 0.0f);
+                glm::vec4 nearPoint = invVP * glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
+                nearPoint /= nearPoint.w;
+                glm::vec4 farPoint = invVP * glm::vec4(ndcX, ndcY, 1.0f, 1.0f);
+                farPoint /= farPoint.w;
 
-                glm::vec3 rayDir = glm::normalize(glm::vec3(invView * eyeCoords));
                 glm::vec3 rayOrigin = m_Camera.GetPosition();
+                glm::vec3 rayDir = glm::normalize(glm::vec3(farPoint - nearPoint));
 
-                auto hit = m_PhysicsWorld.Raycast(scene, rayOrigin, rayDir, 200.0f);
+                auto hit = m_PhysicsWorld.Raycast(scene, rayOrigin, rayDir, 500.0f);
                 if (hit.bHit && hit.HitActor) {
                     if (OnActorSelected) OnActorSelected(hit.HitActor);
                     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && OnActorDoubleClicked) {
@@ -151,8 +154,8 @@ namespace Engine {
         ImGuizmo::SetOrthographic(false);
         ImGuizmo::SetDrawlist();
 
-        ImVec2 windowPos = ImGui::GetWindowPos();
-        ImGuizmo::SetRect(windowPos.x, windowPos.y, m_ViewportSize.x, m_ViewportSize.y);
+        // Exact viewport rectangle matching offscreen render buffer image
+        ImGuizmo::SetRect(m_ViewportPos.x, m_ViewportPos.y, m_ViewportSize.x, m_ViewportSize.y);
 
         glm::mat4 cameraView = m_Camera.GetViewMatrix();
         glm::mat4 cameraProj = m_Camera.GetProjectionMatrix();
@@ -179,6 +182,10 @@ namespace Engine {
             selectedActor->Transform.Position = translation;
             selectedActor->Transform.Rotation = glm::degrees(glm::eulerAngles(orientation));
             selectedActor->Transform.Scale = scale;
+
+            if (auto posComp = selectedActor->GetComponent<PositionComponent>()) {
+                posComp->Transform = selectedActor->Transform;
+            }
         }
     }
 

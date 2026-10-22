@@ -92,16 +92,16 @@ namespace Engine {
                     m_SelectedActor = sphere;
                 }
                 if (ImGui::MenuItem("Directional Light")) {
-                    auto light = scene.SpawnActor("Directional Light");
-                    light->AddComponent<LightComponent>(LightType::Directional);
+                    auto light = scene.SpawnLightActor("Directional Light", LightType::Directional);
                     m_SelectedActor = light;
                 }
                 if (ImGui::MenuItem("Point Light")) {
-                    auto light = scene.SpawnActor("Point Light");
+                    auto light = scene.SpawnLightActor("Point Light", LightType::Point);
                     light->Transform.Position = glm::vec3(0.0f, 3.0f, 0.0f);
-                    auto pl = light->AddComponent<LightComponent>(LightType::Point);
-                    pl->Radius = 10.0f;
-                    pl->Intensity = 2.0f;
+                    if (auto pl = light->GetComponent<LightComponent>()) {
+                        pl->Radius = 10.0f;
+                        pl->Intensity = 2.0f;
+                    }
                     m_SelectedActor = light;
                 }
                 if (ImGui::MenuItem("Empty Actor")) {

@@ -7,6 +7,7 @@
 
 #include "project/Project.hpp"
 #include <filesystem>
+#include <functional>
 
 namespace Engine {
 
@@ -14,7 +15,7 @@ namespace Engine {
 
     /**
      * @class ContentBrowserPanel
-     * @brief File and asset browser supporting project exploration and C++ class creation.
+     * @brief File and asset browser supporting project exploration, file management, and C++ class creation.
      */
     class ContentBrowserPanel {
     public:
@@ -28,9 +29,12 @@ namespace Engine {
 
         /**
          * @brief Renders the content browser panel.
-         * @param scene Active scene pointer for loading scene assets.
+         * @param scene Active scene pointer for loading scene assets and spawning actors.
          */
         void Render(Scene& scene);
+
+        std::function<void(const std::filesystem::path&)> OnFileDoubleClicked;
+        std::function<void(const std::string&)> OnSpawnActorFromClass;
 
     private:
         void DrawDirectoryTree(const std::filesystem::path& dir);
@@ -43,6 +47,13 @@ namespace Engine {
 
         char m_NewClassName[64]{"MyActor"};
         bool m_bShowCreateClassModal{false};
+
+        char m_NewComponentName[64]{"MyCustomComponent"};
+        bool m_bShowCreateComponentModal{false};
+
+        char m_RenameBuffer[128]{""};
+        std::filesystem::path m_ItemToRename;
+        bool m_bShowRenameModal{false};
     };
 
 } // namespace Engine

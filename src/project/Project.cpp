@@ -145,6 +145,62 @@ namespace Engine {
         return true;
     }
 
+    bool Project::GenerateComponentClass(const std::string& className) {
+        if (className.empty()) return false;
+
+        std::filesystem::path srcDir = GetSourceDirectory();
+        std::filesystem::create_directories(srcDir);
+
+        std::filesystem::path headerPath = srcDir / (className + ".hpp");
+        std::filesystem::path sourcePath = srcDir / (className + ".cpp");
+
+        std::ofstream hFile(headerPath);
+        if (!hFile.is_open()) return false;
+
+        hFile << "/**\n"
+              << " * @file " << className << ".hpp\n"
+              << " * @brief Reflected custom gameplay component class.\n"
+              << " */\n\n"
+              << "#pragma once\n\n"
+              << "#include \"scene/Component.hpp\"\n\n"
+              << "class " << className << " : public Engine::Component {\n"
+              << "    GENERATED_BODY()\n"
+              << "public:\n"
+              << "    " << className << "();\n"
+              << "    ~" << className << "() override = default;\n\n"
+              << "    void BeginPlay() override;\n"
+              << "    void Tick(float deltaTime) override;\n\n"
+              << "    float Value{100.0f};\n"
+              << "    bool bIsEnabled{true};\n"
+              << "};\n";
+        hFile.close();
+
+        std::ofstream cppFile(sourcePath);
+        if (!cppFile.is_open()) return false;
+
+        cppFile << "/**\n"
+                << " * @file " << className << ".cpp\n"
+                << " */\n\n"
+                << "#include \"" << className << ".hpp\"\n"
+                << "#include \"core/Log.hpp\"\n\n"
+                << className << "::" << className << "() : Engine::Component(\"" << className << "\") {}\n\n"
+                << "void " << className << "::BeginPlay() {\n"
+                << "    Engine::Component::BeginPlay();\n"
+                << "    LOG_INFO(\"" << className << " BeginPlay called!\");\n"
+                << "}\n\n"
+                << "void " << className << "::Tick(float deltaTime) {\n"
+                << "    Engine::Component::Tick(deltaTime);\n"
+                << "}\n\n"
+                << "ENGINE_CLASS_BEGIN(" << className << ", Component)\n"
+                << "    ENGINE_PROPERTY(" << className << ", Value, Float, \"Gameplay\", \"Custom scalar component value\")\n"
+                << "    ENGINE_PROPERTY(" << className << ", bIsEnabled, Bool, \"Gameplay\", \"Component active toggle\")\n"
+                << "ENGINE_CLASS_END()\n";
+        cppFile.close();
+
+        LOG_INFO("Successfully generated C++ Component: {} (.hpp & .cpp)", className);
+        return true;
+    }
+
     bool Project::BuildProject() {
         LOG_INFO("Initiating build of project {} using Clang...", m_Config.Name);
         // Can be invoked via system/process command or build script

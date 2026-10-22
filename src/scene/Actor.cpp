@@ -12,18 +12,15 @@
 
 namespace Engine {
 
-    Actor::Actor() : Object("Actor") {
-        AddComponent<PositionComponent>();
-        AddComponent<StaticMeshComponent>(PrimitiveType::Cube);
-        AddComponent<PhysicsComponent>();
-        AddComponent<CollisionComponent>();
-    }
+    Actor::Actor() : Actor("Actor", true) {}
 
-    Actor::Actor(std::string name) : Object(std::move(name)) {
+    Actor::Actor(std::string name, bool bAttachDefaultComponents) : Object(std::move(name)) {
         AddComponent<PositionComponent>();
-        AddComponent<StaticMeshComponent>(PrimitiveType::Cube);
-        AddComponent<PhysicsComponent>();
-        AddComponent<CollisionComponent>();
+        if (bAttachDefaultComponents) {
+            AddComponent<StaticMeshComponent>(PrimitiveType::Cube);
+            AddComponent<PhysicsComponent>();
+            AddComponent<CollisionComponent>();
+        }
     }
 
     void Actor::BeginPlay() {

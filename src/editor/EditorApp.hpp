@@ -74,6 +74,7 @@ namespace Engine {
         std::unique_ptr<ConsolePanel> m_ConsolePanel;
         std::unique_ptr<ActorDetailWindow> m_ActorDetailWindow;
         std::unique_ptr<SettingsDialogs> m_SettingsDialogs;
+        std::unique_ptr<class CodeEditorWindow> m_CodeEditorWindow;
 
         bool m_bShowNewProjectModal{false};
         char m_NewProjectName[64]{"MyNewGame"};

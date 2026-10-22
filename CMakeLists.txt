@@ -12,7 +12,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Compiler flags for Clang & MSVC
-add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+add_compile_definitions(_CRT_SECURE_NO_WARNINGS NOMINMAX)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(
@@ -117,11 +117,19 @@ file(GLOB_RECURSE EDITOR_HEADERS
     "src/editor/*.hpp"
 )
 
-add_executable(EngineEditor
-    src/main.cpp
-    ${EDITOR_SOURCES}
-    ${EDITOR_HEADERS}
-)
+if(WIN32)
+    add_executable(EngineEditor WIN32
+        src/main.cpp
+        ${EDITOR_SOURCES}
+        ${EDITOR_HEADERS}
+    )
+else()
+    add_executable(EngineEditor
+        src/main.cpp
+        ${EDITOR_SOURCES}
+        ${EDITOR_HEADERS}
+    )
+endif()
 
 target_include_directories(EngineEditor PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src

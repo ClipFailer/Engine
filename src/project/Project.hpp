@@ -62,6 +62,13 @@ namespace Engine {
         bool GenerateActorClass(const std::string& className);
 
         /**
+         * @brief Generates boilerplate C++ header and source files for a new reflected Component class.
+         * @param className Name of C++ component class (e.g., "HealthComponent").
+         * @return True if generated.
+         */
+        bool GenerateComponentClass(const std::string& className);
+
+        /**
          * @brief Compiles C++ game module using CMake and Clang.
          * @return True if build succeeded.
          */

@@ -26,6 +26,14 @@ namespace Engine {
         }
     }
 
+    Actor* Scene::SpawnLightActor(const std::string& name, LightType type) {
+        auto actor = std::make_unique<Actor>(name, /*bAttachDefaultComponents=*/false);
+        actor->AddComponent<LightComponent>(type);
+        Actor* ptr = actor.get();
+        m_Actors.push_back(std::move(actor));
+        return ptr;
+    }
+
     void Scene::DestroyActor(Actor* actor) {
         if (!actor) return;
         auto it = std::remove_if(m_Actors.begin(), m_Actors.end(),
@@ -90,11 +98,10 @@ namespace Engine {
     void Scene::SetupDefaultScene() {
         m_Actors.clear();
 
-        // 1. Directional Sun Light
-        auto sun = SpawnActor("Directional Light");
+        // 1. Directional Sun Light (lightweight entity: no mesh, no physics, no collision)
+        auto sun = SpawnLightActor("Directional Light", LightType::Directional);
         sun->Transform.Position = glm::vec3(5.0f, 10.0f, 5.0f);
         sun->Transform.Rotation = glm::vec3(-45.0f, 35.0f, 0.0f);
-        sun->AddComponent<LightComponent>(LightType::Directional);
 
         // 2. Ground Floor Plane
         auto ground = SpawnActor("Ground Plane");

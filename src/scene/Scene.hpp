@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Actor.hpp"
+#include "LightComponent.hpp"
 #include "core/Types.hpp"
 #include <vector>
 #include <memory>
@@ -46,6 +47,14 @@ namespace Engine {
             m_Actors.push_back(std::move(actor));
             return ptr;
         }
+
+        /**
+         * @brief Spawns a lightweight light actor (Directional or Point) without physics, mesh, or collision.
+         * @param name Name of the light entity.
+         * @param type Light type (Directional or Point).
+         * @return Pointer to spawned light actor.
+         */
+        Actor* SpawnLightActor(const std::string& name, LightType type);
 
         /**
          * @brief Destroys and removes an actor from the scene.

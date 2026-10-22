@@ -174,7 +174,19 @@ namespace Engine {
             if (!actor->bIsVisible) continue;
 
             glm::vec3 center = actor->Transform.Position;
-            float radius = std::max({actor->Transform.Scale.x, actor->Transform.Scale.y, actor->Transform.Scale.z}) * 0.5f;
+            float radius = 0.6f;
+
+            if (auto coll = actor->GetComponent<CollisionComponent>()) {
+                if (coll->Shape == CollisionShape::Sphere) {
+                    radius = coll->SphereRadius * std::max({actor->Transform.Scale.x, actor->Transform.Scale.y, actor->Transform.Scale.z});
+                } else {
+                    radius = glm::length(coll->BoxHalfExtents * actor->Transform.Scale);
+                }
+                center += coll->Offset;
+            } else {
+                float maxScale = std::max({actor->Transform.Scale.x, actor->Transform.Scale.y, actor->Transform.Scale.z});
+                radius = std::max(0.6f, maxScale * 0.866f);
+            }
 
             // Ray vs Sphere intersection test
             glm::vec3 oc = rayOrigin - center;
@@ -184,7 +196,11 @@ namespace Engine {
             float discriminant = b * b - 4.0f * a * c;
 
             if (discriminant >= 0.0f) {
-                float dist = (-b - std::sqrt(discriminant)) / (2.0f * a);
+                float sqrtDisc = std::sqrt(discriminant);
+                float t0 = (-b - sqrtDisc) / (2.0f * a);
+                float t1 = (-b + sqrtDisc) / (2.0f * a);
+                float dist = t0 > 0.0f ? t0 : t1;
+
                 if (dist > 0.0f && dist < hit.Distance) {
                     hit.bHit = true;
                     hit.Distance = dist;

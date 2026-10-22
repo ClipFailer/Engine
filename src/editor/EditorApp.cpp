@@ -6,6 +6,7 @@
 #include "EditorApp.hpp"
 #include "UE5Theme.hpp"
 #include "core/Log.hpp"
+#include "CodeEditorWindow.hpp"
 #include "scene/StaticMeshComponent.hpp"
 #include "scene/LightComponent.hpp"
 #include "scene/RigidBodyComponent.hpp"
@@ -34,7 +35,8 @@ namespace Engine {
 
     bool EditorApp::Initialize() {
 #if defined(_WIN32)
-        // Hide Windows command prompt window on startup for clean desktop editor experience
+        // Ensure OS console window is fully detached and hidden for clean desktop GUI experience
+        FreeConsole();
         HWND consoleWnd = GetConsoleWindow();
         if (consoleWnd) {
             ShowWindow(consoleWnd, SW_HIDE);
@@ -98,12 +100,14 @@ namespace Engine {
         m_ViewportPanel = std::make_unique<ViewportPanel>(*m_Renderer, *m_Camera, *m_PhysicsWorld);
         m_OutlinerPanel = std::make_unique<OutlinerPanel>();
         m_DetailsPanel = std::make_unique<DetailsPanel>();
+        m_DetailsPanel->SetProject(m_Project.get());
         m_ContentBrowserPanel = std::make_unique<ContentBrowserPanel>(*m_Project);
         m_ConsolePanel = std::make_unique<ConsolePanel>();
         m_ActorDetailWindow = std::make_unique<ActorDetailWindow>();
         m_SettingsDialogs = std::make_unique<SettingsDialogs>();
+        m_CodeEditorWindow = std::make_unique<CodeEditorWindow>();
 
-        // Wire selection and double-click callbacks
+        // Wire selection, double-click, and code editor callbacks
         m_ViewportPanel->OnActorSelected = [this](Actor* a) {
             m_OutlinerPanel->SetSelectedActor(a);
         };
@@ -112,6 +116,17 @@ namespace Engine {
         };
         m_OutlinerPanel->OnActorDoubleClicked = [this](Actor* a) {
             m_ActorDetailWindow->Open(a);
+        };
+        m_ContentBrowserPanel->OnFileDoubleClicked = [this](const std::filesystem::path& path) {
+            m_CodeEditorWindow->OpenFile(path);
+        };
+        m_ContentBrowserPanel->OnSpawnActorFromClass = [this](const std::string& className) {
+            for (const auto& a : m_Scene->GetActors()) {
+                if (a->GetName() == className) {
+                    m_OutlinerPanel->SetSelectedActor(a.get());
+                    break;
+                }
+            }
         };
 
         // 9. Command Buffers & Sync Objects
@@ -366,6 +381,7 @@ namespace Engine {
         m_ConsolePanel->Render();
 
         m_ActorDetailWindow->Render();
+        m_CodeEditorWindow->Render();
         m_SettingsDialogs->Render(*m_Project, *m_PhysicsWorld);
         RenderNewProjectModal();
 
@@ -397,6 +413,13 @@ namespace Engine {
                 ImGui::EndMenu();
             }
 
+            if (ImGui::BeginMenu("Window")) {
+                if (ImGui::MenuItem("Source Code Editor")) {
+                    m_CodeEditorWindow->SetOpen(true);
+                }
+                ImGui::EndMenu();
+            }
+
             if (ImGui::BeginMenu("Actor")) {
                 if (ImGui::MenuItem("Spawn Cube")) {
                     auto a = m_Scene->SpawnActor("Cube");
@@ -410,16 +433,16 @@ namespace Engine {
                     m_OutlinerPanel->SetSelectedActor(a);
                 }
                 if (ImGui::MenuItem("Spawn Directional Light")) {
-                    auto a = m_Scene->SpawnActor("Sun");
-                    a->AddComponent<LightComponent>(LightType::Directional);
+                    auto a = m_Scene->SpawnLightActor("Sun", LightType::Directional);
                     m_OutlinerPanel->SetSelectedActor(a);
                 }
                 if (ImGui::MenuItem("Spawn Point Light")) {
-                    auto a = m_Scene->SpawnActor("Point Light");
+                    auto a = m_Scene->SpawnLightActor("Point Light", LightType::Point);
                     a->Transform.Position = glm::vec3(0.0f, 3.0f, 0.0f);
-                    auto pl = a->AddComponent<LightComponent>(LightType::Point);
-                    pl->Radius = 12.0f;
-                    pl->Intensity = 2.0f;
+                    if (auto pl = a->GetComponent<LightComponent>()) {
+                        pl->Radius = 12.0f;
+                        pl->Intensity = 2.0f;
+                    }
                     m_OutlinerPanel->SetSelectedActor(a);
                 }
                 ImGui::Separator();

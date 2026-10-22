@@ -57,3 +57,18 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+
+/**
+ * @brief Windows WinMain entry point for GUI subsystem without an OS console window.
+ */
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    FreeConsole();
+    return main(__argc, __argv);
+}
+#endif

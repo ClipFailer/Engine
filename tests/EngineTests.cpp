@@ -122,6 +122,19 @@ namespace EngineTests {
         TEST_ASSERT(light != nullptr, "AddComponent LightComponent failed");
         TEST_ASSERT(actor->GetComponents().size() == 5, "Component count mismatch");
 
+        // Verify SpawnLightActor creates lightweight actor without mesh, physics, or collision
+        auto sunLight = scene.SpawnLightActor("SunLight", Engine::LightType::Directional);
+        TEST_ASSERT(sunLight != nullptr, "SpawnLightActor failed");
+        TEST_ASSERT(sunLight->GetComponent<Engine::PositionComponent>() != nullptr, "Light must have PositionComponent");
+        TEST_ASSERT(sunLight->GetComponent<Engine::LightComponent>() != nullptr, "Light must have LightComponent");
+        TEST_ASSERT(sunLight->GetComponent<Engine::StaticMeshComponent>() == nullptr, "Directional Light must NOT have StaticMeshComponent");
+        TEST_ASSERT(sunLight->GetComponent<Engine::PhysicsComponent>() == nullptr, "Directional Light must NOT have PhysicsComponent");
+        TEST_ASSERT(sunLight->GetComponent<Engine::CollisionComponent>() == nullptr, "Directional Light must NOT have CollisionComponent");
+
+        // Verify RemoveComponent<T>()
+        actor->RemoveComponent<Engine::StaticMeshComponent>();
+        TEST_ASSERT(actor->GetComponent<Engine::StaticMeshComponent>() == nullptr, "RemoveComponent<StaticMeshComponent> failed");
+
         // Test snapshot & simulation restore
         actor->Transform.Position = glm::vec3(0.0f, 10.0f, 0.0f);
         scene.StartSimulation();
@@ -263,6 +276,11 @@ namespace EngineTests {
         TEST_ASSERT(gen == true, "GenerateActorClass failed");
         TEST_ASSERT(std::filesystem::exists(tempDir / "Source" / "MonsterPawn.hpp"), "Scaffolded MonsterPawn.hpp missing");
         TEST_ASSERT(std::filesystem::exists(tempDir / "Source" / "MonsterPawn.cpp"), "Scaffolded MonsterPawn.cpp missing");
+
+        bool genComp = project->GenerateComponentClass("StaminaComponent");
+        TEST_ASSERT(genComp == true, "GenerateComponentClass failed");
+        TEST_ASSERT(std::filesystem::exists(tempDir / "Source" / "StaminaComponent.hpp"), "Scaffolded StaminaComponent.hpp missing");
+        TEST_ASSERT(std::filesystem::exists(tempDir / "Source" / "StaminaComponent.cpp"), "Scaffolded StaminaComponent.cpp missing");
 
         std::filesystem::remove_all(tempDir);
         return true;
