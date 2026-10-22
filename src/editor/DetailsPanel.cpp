@@ -13,6 +13,8 @@
 #include "scene/PhysicsComponent.hpp"
 #include "scene/CollisionComponent.hpp"
 #include "scene/MovementComponent.hpp"
+#include "scene/WidgetComponent.hpp"
+#include "scene/CustomComponent.hpp"
 #include "animation/SkeletalMeshComponent.hpp"
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -53,9 +55,16 @@ namespace Engine {
 
         // 3. Components & Reflected Properties
         const auto& components = actor->GetComponents();
+        Component* compToRemove = nullptr;
         for (const auto& comp : components) {
             std::string headerName = comp->GetName() + " (" + std::string(comp->GetClassName()) + ")";
             if (ImGui::CollapsingHeader(headerName.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Remove Component")) {
+                        compToRemove = comp.get();
+                    }
+                    ImGui::EndPopup();
+                }
                 const ClassDescriptor* clsDesc = TypeRegistry::Get().FindClass(comp->GetClassName());
                 if (clsDesc) {
                     for (const auto& prop : clsDesc->GetProperties()) {
@@ -63,6 +72,9 @@ namespace Engine {
                     }
                 }
             }
+        }
+        if (compToRemove) {
+            actor->RemoveComponent(compToRemove);
         }
 
         // 4. Add Component Button
@@ -100,9 +112,56 @@ namespace Engine {
             if (ImGui::MenuItem("Skeletal Mesh Component")) {
                 actor->AddComponent<SkeletalMeshComponent>();
             }
+            if (ImGui::MenuItem("Widget Component (HTML+CSS UI)")) {
+                actor->AddComponent<WidgetComponent>();
+            }
+
+            ImGui::Separator();
+            if (ImGui::BeginMenu("Custom Components")) {
+                // Dynamically list registered components from TypeRegistry
+                for (const auto& [name, desc] : TypeRegistry::Get().GetAllClasses()) {
+                    if (name != "Actor" && name != "Character" && name != "Object") {
+                        if (ImGui::MenuItem(name.c_str())) {
+                            actor->AddComponent<CustomComponent>(name);
+                            LOG_INFO("Attached custom component '{}' to Actor '{}'", name, actor->GetName());
+                        }
+                    }
+                }
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::MenuItem("Attach Custom Component by Name...")) {
+                m_bShowAttachByNameModal = true;
+            }
+
             ImGui::Separator();
             if (ImGui::MenuItem("Create New C++ Component Class...")) {
                 m_bShowCreateComponentModal = true;
+            }
+            ImGui::EndPopup();
+        }
+
+        // Modal: Attach Custom Component by Name
+        if (m_bShowAttachByNameModal) {
+            ImGui::OpenPopup("Attach Custom Component###AttachByNameModal");
+        }
+        if (ImGui::BeginPopupModal("Attach Custom Component###AttachByNameModal", &m_bShowAttachByNameModal, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Enter Component Name to attach to '%s':", actor->GetName().c_str());
+            ImGui::InputText("##AttachCompName", m_AttachComponentName, sizeof(m_AttachComponentName));
+            ImGui::Spacing();
+
+            if (ImGui::Button("Attach", ImVec2(100, 26))) {
+                if (strlen(m_AttachComponentName) > 0) {
+                    actor->AddComponent<CustomComponent>(m_AttachComponentName);
+                    LOG_INFO("Attached custom component '{}' to Actor '{}'", m_AttachComponentName, actor->GetName());
+                }
+                m_bShowAttachByNameModal = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(80, 26))) {
+                m_bShowAttachByNameModal = false;
+                ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }

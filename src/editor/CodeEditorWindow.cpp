@@ -58,10 +58,7 @@ namespace Engine {
         m_bIsModified = false;
         m_bIsOpen = true;
         m_StatusMessage = "Loaded: " + filePath.filename().string();
-        LOG_INFO("CodeEditor opened: {}", filePath.string());
-
-        // Also launch in VS Code / system editor for developer convenience
-        LaunchExternalEditor(filePath);
+        LOG_INFO("CodeEditor opened internally: {}", filePath.string());
     }
 
     void CodeEditorWindow::Render() {

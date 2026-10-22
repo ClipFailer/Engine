@@ -7,9 +7,13 @@
 #include "UE5Theme.hpp"
 #include "core/Log.hpp"
 #include "CodeEditorWindow.hpp"
+#include "UIDesignerWindow.hpp"
+#include "ProjectHubWindow.hpp"
 #include "scene/StaticMeshComponent.hpp"
 #include "scene/LightComponent.hpp"
 #include "scene/RigidBodyComponent.hpp"
+#include "scene/CustomComponent.hpp"
+#include "scene/Character.hpp"
 #include "module/ModuleManager.hpp"
 #include "ui/UIModule.hpp"
 #include "animation/AnimationModule.hpp"
@@ -106,6 +110,8 @@ namespace Engine {
         m_ActorDetailWindow = std::make_unique<ActorDetailWindow>();
         m_SettingsDialogs = std::make_unique<SettingsDialogs>();
         m_CodeEditorWindow = std::make_unique<CodeEditorWindow>();
+        m_UIDesignerWindow = std::make_unique<UIDesignerWindow>();
+        m_ProjectHubWindow = std::make_unique<ProjectHubWindow>();
 
         // Wire selection, double-click, and code editor callbacks
         m_ViewportPanel->OnActorSelected = [this](Actor* a) {
@@ -127,6 +133,35 @@ namespace Engine {
                     break;
                 }
             }
+        };
+        m_ContentBrowserPanel->OnActorAssetDoubleClicked = [this](const std::string& className) {
+            for (const auto& a : m_Scene->GetActors()) {
+                if (a->GetName() == className) {
+                    m_ActorDetailWindow->Open(a.get());
+                    return;
+                }
+            }
+            auto spawned = m_Scene->SpawnActor(className);
+            m_OutlinerPanel->SetSelectedActor(spawned);
+            m_ActorDetailWindow->Open(spawned);
+        };
+        m_ContentBrowserPanel->OnUIDoubleClicked = [this](const std::filesystem::path& path) {
+            m_UIDesignerWindow->OpenFile(path);
+        };
+        m_ContentBrowserPanel->OnAttachComponentToSelected = [this](const std::string& compName) {
+            if (auto sel = m_OutlinerPanel->GetSelectedActor()) {
+                sel->AddComponent<CustomComponent>(compName);
+                LOG_INFO("Attached custom component '{}' to Actor '{}'", compName, sel->GetName());
+            }
+        };
+
+        // Project Hub Launcher callbacks
+        m_ProjectHubWindow->OnOpenProject = [this](const std::filesystem::path& path) {
+            OpenProject(path, false);
+        };
+        m_ProjectHubWindow->OnCreateProject = [this](const std::filesystem::path& path, const std::string& name, bool bEmpty) {
+            m_Project = Project::CreateNew(path, name);
+            OpenProject(path / (name + ".uproj"), bEmpty);
         };
 
         // 9. Command Buffers & Sync Objects
@@ -382,7 +417,9 @@ namespace Engine {
 
         m_ActorDetailWindow->Render();
         m_CodeEditorWindow->Render();
+        m_UIDesignerWindow->Render(m_OutlinerPanel->GetSelectedActor());
         m_SettingsDialogs->Render(*m_Project, *m_PhysicsWorld);
+        m_ProjectHubWindow->Render();
         RenderNewProjectModal();
 
         ImGui::End();
@@ -391,6 +428,9 @@ namespace Engine {
     void EditorApp::RenderMainMenuBar() {
         if (ImGui::BeginMenuBar()) {
             if (ImGui::BeginMenu("File")) {
+                if (ImGui::MenuItem("Project Hub / Switch Project...")) {
+                    m_ProjectHubWindow->Open();
+                }
                 if (ImGui::MenuItem("New Project...")) {
                     m_bShowNewProjectModal = true;
                 }
@@ -414,13 +454,24 @@ namespace Engine {
             }
 
             if (ImGui::BeginMenu("Window")) {
+                if (ImGui::MenuItem("Project Hub / Launcher")) {
+                    m_ProjectHubWindow->Open();
+                }
                 if (ImGui::MenuItem("Source Code Editor")) {
                     m_CodeEditorWindow->SetOpen(true);
+                }
+                if (ImGui::MenuItem("UI Designer & Live Preview")) {
+                    m_UIDesignerWindow->SetOpen(true);
                 }
                 ImGui::EndMenu();
             }
 
             if (ImGui::BeginMenu("Actor")) {
+                if (ImGui::MenuItem("Spawn Character (Locomotion)")) {
+                    auto chr = m_Scene->SpawnActor<Character>("PlayerCharacter");
+                    chr->Transform.Position = glm::vec3(0.0f, 1.0f, 0.0f);
+                    m_OutlinerPanel->SetSelectedActor(chr);
+                }
                 if (ImGui::MenuItem("Spawn Cube")) {
                     auto a = m_Scene->SpawnActor("Cube");
                     m_OutlinerPanel->SetSelectedActor(a);
@@ -543,6 +594,24 @@ namespace Engine {
         ImGui::End();
         ImGui::PopStyleColor();
         ImGui::PopStyleVar();
+    }
+
+    void EditorApp::OpenProject(const std::filesystem::path& projectFilePath, bool bEmptyScene) {
+        if (!std::filesystem::exists(projectFilePath)) return;
+
+        m_Project = std::make_unique<Project>(projectFilePath);
+        m_ContentBrowserPanel->SetProject(*m_Project);
+        m_DetailsPanel->SetProject(m_Project.get());
+        if (m_ProjectHubWindow) {
+            m_ProjectHubWindow->AddRecentProject(m_Project->GetConfig().Name, projectFilePath.string());
+        }
+
+        if (bEmptyScene) {
+            m_Scene->ClearAllActors();
+            LOG_INFO("Created clean empty scene for project '{}'", m_Project->GetConfig().Name);
+        }
+
+        LOG_INFO("Opened project: {}", projectFilePath.string());
     }
 
 } // namespace Engine

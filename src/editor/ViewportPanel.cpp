@@ -5,6 +5,8 @@
 
 #include "ViewportPanel.hpp"
 #include "scene/PositionComponent.hpp"
+#include "scene/WidgetComponent.hpp"
+#include "core/Log.hpp"
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -34,6 +36,28 @@ namespace Engine {
         VkDescriptorSet textureId = m_Renderer.GetViewportTexture();
         if (textureId != VK_NULL_HANDLE) {
             ImGui::Image((ImTextureID)textureId, m_ViewportSize);
+        }
+
+        // Drag and drop target to spawn actor from Content Browser directly into 3D scene
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ACTOR_ASSET")) {
+                std::string actorClassName = (const char*)payload->Data;
+                auto spawned = scene.SpawnActor(actorClassName);
+                spawned->Transform.Position = m_Camera.GetPosition() + glm::vec3(0.0f, 0.0f, -4.0f);
+                spawned->Transform.Position.y = (std::max)(spawned->Transform.Position.y, 1.0f);
+                if (OnActorSelected) OnActorSelected(spawned);
+                LOG_INFO("Spawned Actor '{}' into 3D Viewport via Drag-and-Drop", actorClassName);
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        // Render 3D and Screen UI WidgetComponents
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        for (const auto& actor : scene.GetActors()) {
+            if (!actor->bIsVisible) continue;
+            if (auto widget = actor->GetComponent<WidgetComponent>()) {
+                widget->Render(actor->Transform.Position, m_Camera, drawList, m_ViewportPos, m_ViewportSize);
+            }
         }
 
         HandlePicking(scene);
@@ -94,11 +118,11 @@ namespace Engine {
             return;
         }
 
-        // Fly Camera (RMB held down)
+        // Fly Camera (RMB held down) - intuitive non-inverted look direction
         if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
             ImVec2 mouseDelta = io.MouseDelta;
             if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f) {
-                m_Camera.Rotate(mouseDelta.y * 0.15f, mouseDelta.x * 0.15f);
+                m_Camera.Rotate(-mouseDelta.y * 0.15f, -mouseDelta.x * 0.15f);
             }
 
             glm::vec3 moveDelta{0.0f};

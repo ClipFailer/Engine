@@ -7,6 +7,7 @@
 #include <imgui.h>
 #include <regex>
 #include <stack>
+#include <algorithm>
 
 namespace Engine {
 
@@ -14,7 +15,15 @@ namespace Engine {
         m_Root = std::make_shared<UIElement>("root");
     }
 
-    bool UIDocument::LoadFromString(const std::string& html) {
+    bool UIDocument::LoadFromString(const std::string& html, const std::string& css) {
+        bool res = ParseHTML(html);
+        if (!css.empty()) {
+            ParseCSS(css);
+        }
+        return res;
+    }
+
+    bool UIDocument::ParseHTML(const std::string& html) {
         m_Root = std::make_shared<UIElement>("root");
         m_Root->Style.Display = UIDisplay::Flex;
         m_Root->Style.FlexDirection = UIFlexDirection::Column;
@@ -74,13 +83,72 @@ namespace Engine {
             }
         }
 
+        ApplyStyles(m_Root);
         return true;
+    }
+
+    bool UIDocument::ParseCSS(const std::string& css) {
+        std::regex ruleRegex(R"(([a-zA-Z0-9_\-\.#]+)\s*\{([^}]*)\})");
+        auto begin = std::sregex_iterator(css.begin(), css.end(), ruleRegex);
+        auto end = std::sregex_iterator();
+
+        for (auto it = begin; it != end; ++it) {
+            std::string selector = (*it)[1].str();
+            std::string decl = (*it)[2].str();
+
+            auto trim = [](std::string& s) {
+                s.erase(0, s.find_first_not_of(" \t\r\n"));
+                s.erase(s.find_last_not_of(" \t\r\n") + 1);
+            };
+            trim(selector);
+            trim(decl);
+
+            m_CSSRules[selector] = decl;
+        }
+
+        ApplyStyles(m_Root);
+        return true;
+    }
+
+    void UIDocument::ApplyStyles(const std::shared_ptr<UIElement>& element) {
+        if (!element) return;
+
+        // Apply matching tag selector
+        if (auto it = m_CSSRules.find(element->Tag); it != m_CSSRules.end()) {
+            element->Style.ParseInline(it->second);
+        }
+
+        // Apply class selector (.className)
+        if (!element->ClassName.empty()) {
+            if (auto it = m_CSSRules.find("." + element->ClassName); it != m_CSSRules.end()) {
+                element->Style.ParseInline(it->second);
+            }
+        }
+
+        // Apply ID selector (#id)
+        if (!element->Id.empty()) {
+            if (auto it = m_CSSRules.find("#" + element->Id); it != m_CSSRules.end()) {
+                element->Style.ParseInline(it->second);
+            }
+        }
+
+        for (const auto& child : element->Children) {
+            ApplyStyles(child);
+        }
     }
 
     void UIDocument::Render() {
         if (!m_Root) return;
         for (const auto& child : m_Root->Children) {
             RenderElement(child);
+        }
+    }
+
+    void UIDocument::Render(ImDrawList* drawList, const ImVec2& screenPos, const ImVec2& size) {
+        if (!m_Root || !drawList) return;
+        ImVec2 curPos = screenPos;
+        for (const auto& child : m_Root->Children) {
+            RenderElementDrawList(child, drawList, curPos, size);
         }
     }
 
@@ -169,6 +237,69 @@ namespace Engine {
         }
 
         ImGui::PopID();
+    }
+
+    void UIDocument::RenderElementDrawList(const std::shared_ptr<UIElement>& element, ImDrawList* drawList,
+                                          ImVec2& curPos, const ImVec2& parentSize) {
+        if (!element || !drawList) return;
+
+        float w = element->Style.Width > 0.0f ? element->Style.Width : parentSize.x;
+        float h = element->Style.Height > 0.0f ? element->Style.Height : 32.0f;
+
+        ImVec2 boxMin = curPos;
+        ImVec2 boxMax = ImVec2(boxMin.x + w, boxMin.y + h);
+
+        // Background
+        if (element->Style.BackgroundColor.a > 0.0f) {
+            ImU32 bgCol = ImGui::ColorConvertFloat4ToU32(ImVec4(
+                element->Style.BackgroundColor.r,
+                element->Style.BackgroundColor.g,
+                element->Style.BackgroundColor.b,
+                element->Style.BackgroundColor.a
+            ));
+            drawList->AddRectFilled(boxMin, boxMax, bgCol, element->Style.BorderRadius);
+        }
+
+        // Border
+        if (element->Style.BorderWidth > 0.0f && element->Style.BorderColor.a > 0.0f) {
+            ImU32 borderCol = ImGui::ColorConvertFloat4ToU32(ImVec4(
+                element->Style.BorderColor.r,
+                element->Style.BorderColor.g,
+                element->Style.BorderColor.b,
+                element->Style.BorderColor.a
+            ));
+            drawList->AddRect(boxMin, boxMax, borderCol, element->Style.BorderRadius, 0, element->Style.BorderWidth);
+        }
+
+        // Text
+        if (!element->Text.empty()) {
+            ImU32 textCol = ImGui::ColorConvertFloat4ToU32(ImVec4(
+                element->Style.TextColor.r,
+                element->Style.TextColor.g,
+                element->Style.TextColor.b,
+                element->Style.TextColor.a
+            ));
+            ImVec2 textPos = ImVec2(boxMin.x + element->Style.PaddingLeft, boxMin.y + element->Style.PaddingTop);
+            drawList->AddText(textPos, textCol, element->Text.c_str());
+        }
+
+        // Children
+        bool isRow = (element->Style.FlexDirection == UIFlexDirection::Row);
+        ImVec2 childPos = ImVec2(boxMin.x + element->Style.PaddingLeft,
+                                 boxMin.y + (element->Text.empty() ? element->Style.PaddingTop : element->Style.PaddingTop + 20.0f));
+
+        for (const auto& child : element->Children) {
+            RenderElementDrawList(child, drawList, childPos, ImVec2(w - element->Style.PaddingLeft - element->Style.PaddingRight, h));
+            if (isRow) {
+                childPos.x += (child->Style.Width > 0 ? child->Style.Width : 60.0f) + 8.0f;
+            } else {
+                childPos.y += (child->Style.Height > 0 ? child->Style.Height : 32.0f) + 4.0f;
+            }
+        }
+
+        if (!isRow) {
+            curPos.y = std::max(curPos.y + h + element->Style.MarginBottom, childPos.y + element->Style.PaddingBottom);
+        }
     }
 
 } // namespace Engine

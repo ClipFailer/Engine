@@ -17,6 +17,9 @@
 #include "scene/CollisionComponent.hpp"
 #include "scene/MovementComponent.hpp"
 #include "scene/LightComponent.hpp"
+#include "scene/Character.hpp"
+#include "scene/WidgetComponent.hpp"
+#include "scene/CustomComponent.hpp"
 #include "scene/Scene.hpp"
 #include "scene/Primitives.hpp"
 #include "physics/PhysicsWorld.hpp"
@@ -72,12 +75,15 @@ namespace EngineTests {
     bool TestReflection() {
         Engine::Component::RegisterReflection();
         Engine::Actor::RegisterReflection();
+        Engine::Character::RegisterReflection();
         Engine::PositionComponent::RegisterReflection();
         Engine::StaticMeshComponent::RegisterReflection();
         Engine::PhysicsComponent::RegisterReflection();
         Engine::CollisionComponent::RegisterReflection();
         Engine::MovementComponent::RegisterReflection();
         Engine::LightComponent::RegisterReflection();
+        Engine::WidgetComponent::RegisterReflection();
+        Engine::CustomComponent::RegisterReflection();
         Engine::SkeletalMeshComponent::RegisterReflection();
 
         const auto* cls = Engine::TypeRegistry::Get().FindClass("StaticMeshComponent");
@@ -286,6 +292,32 @@ namespace EngineTests {
         return true;
     }
 
+    bool TestCharacterAndUIComponents() {
+        Engine::Scene scene;
+
+        // 1. Test Character class
+        auto chr = scene.SpawnActor<Engine::Character>("TestHero");
+        TEST_ASSERT(chr != nullptr, "SpawnActor<Character> failed");
+        TEST_ASSERT(chr->WalkSpeed == 6.0f, "Default Character WalkSpeed mismatch");
+        TEST_ASSERT(chr->GetComponent<Engine::MovementComponent>() != nullptr, "Character must have MovementComponent");
+
+        chr->AddMovementInput(glm::vec3(1.0f, 0.0f, 0.0f), 1.0f);
+        chr->Jump();
+        TEST_ASSERT(chr->bIsGrounded == false, "Character should not be grounded immediately after jump");
+
+        // 2. Test WidgetComponent attachment
+        auto widget = chr->AddComponent<Engine::WidgetComponent>("<div class='hp'><h1>Hero HP</h1></div>", ".hp { color: #fff; }");
+        TEST_ASSERT(widget != nullptr, "AddComponent WidgetComponent failed");
+        TEST_ASSERT(widget->bIsWorldSpace == true, "WidgetComponent default should be world space");
+
+        // 3. Test dynamic CustomComponent attachment
+        auto custom = chr->AddComponent<Engine::CustomComponent>("StaminaSubsystem");
+        TEST_ASSERT(custom != nullptr, "AddComponent CustomComponent failed");
+        TEST_ASSERT(custom->ComponentType == "StaminaSubsystem", "CustomComponent type name mismatch");
+
+        return true;
+    }
+
 } // namespace EngineTests
 
 int main() {
@@ -294,7 +326,7 @@ int main() {
     std::cout << "========================================\n";
 
     int passed = 0;
-    int total = 10;
+    int total = 11;
 
     auto runTest = [&](const char* name, bool(*func)()) {
         std::cout << "[RUNNING] " << name << "... ";
@@ -316,6 +348,7 @@ int main() {
     runTest("Skeletal Mesh Animation System", EngineTests::TestSkeletalAnimation);
     runTest("Procedural Geometry Primitives", EngineTests::TestPrimitives);
     runTest("Project Scaffolding & Dynamic Class Generator", EngineTests::TestProjectScaffolding);
+    runTest("Character Locomotion, UI & Custom Components", EngineTests::TestCharacterAndUIComponents);
 
     std::cout << "========================================\n";
     std::cout << "Tests Passed: " << passed << " / " << total << "\n";

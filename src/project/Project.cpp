@@ -72,6 +72,30 @@ namespace Engine {
         }
     }
 
+    static void SetupIntellisenseFiles(const std::filesystem::path& dir) {
+        try {
+            std::ofstream flags(dir / "compile_flags.txt");
+            if (flags.is_open()) {
+                flags << "-I\nC:/Projects/Vulkan/Engine/src\n-I\nC:/Projects/Vulkan/Engine/external\n-I\nC:/Projects/Vulkan/Engine/build/_deps/glm-src\n-I\nC:/Projects/Vulkan/Engine/build/_deps/nlohmann_json-src/include\n-I\nC:/Projects/Vulkan/Engine/build/_deps/imgui-src\n-std=c++20\n-D_CRT_SECURE_NO_WARNINGS\n-DNOMINMAX\n";
+                flags.close();
+            }
+
+            std::ofstream clangdFile(dir / ".clangd");
+            if (clangdFile.is_open()) {
+                clangdFile << "CompileFlags:\n  Add:\n    - \"-IC:/Projects/Vulkan/Engine/src\"\n    - \"-IC:/Projects/Vulkan/Engine/external\"\n    - \"-IC:/Projects/Vulkan/Engine/build/_deps/glm-src\"\n    - \"-IC:/Projects/Vulkan/Engine/build/_deps/nlohmann_json-src/include\"\n    - \"-IC:/Projects/Vulkan/Engine/build/_deps/imgui-src\"\n    - \"-std=c++20\"\n    - \"-D_CRT_SECURE_NO_WARNINGS\"\n    - \"-DNOMINMAX\"\n";
+                clangdFile.close();
+            }
+
+            std::filesystem::path vscodeDir = dir / ".vscode";
+            std::filesystem::create_directories(vscodeDir);
+            std::ofstream cprops(vscodeDir / "c_cpp_properties.json");
+            if (cprops.is_open()) {
+                cprops << "{\n    \"configurations\": [\n        {\n            \"name\": \"Win32\",\n            \"includePath\": [\n                \"${workspaceFolder}/**\",\n                \"C:/Projects/Vulkan/Engine/src\",\n                \"C:/Projects/Vulkan/Engine/external\",\n                \"C:/Projects/Vulkan/Engine/build/_deps/glm-src\"\n            ],\n            \"defines\": [\"_CRT_SECURE_NO_WARNINGS\", \"NOMINMAX\"],\n            \"cppStandard\": \"c++20\",\n            \"compilerPath\": \"C:/Program Files/LLVM/bin/clang++.exe\"\n        }\n    ],\n    \"version\": 4\n}\n";
+                cprops.close();
+            }
+        } catch (...) {}
+    }
+
     std::unique_ptr<Project> Project::CreateNew(const std::filesystem::path& directory, const std::string& projectName) {
         auto project = std::make_unique<Project>();
         project->m_Config.Name = projectName;
@@ -79,6 +103,9 @@ namespace Engine {
 
         std::filesystem::create_directories(directory / "Content");
         std::filesystem::create_directories(directory / "Source");
+
+        // Write compile flags & clangd config so VS Code sees engine headers
+        SetupIntellisenseFiles(directory);
 
         project->Save();
 

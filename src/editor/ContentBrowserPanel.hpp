@@ -35,6 +35,9 @@ namespace Engine {
 
         std::function<void(const std::filesystem::path&)> OnFileDoubleClicked;
         std::function<void(const std::string&)> OnSpawnActorFromClass;
+        std::function<void(const std::string&)> OnActorAssetDoubleClicked;
+        std::function<void(const std::filesystem::path&)> OnUIDoubleClicked;
+        std::function<void(const std::string&)> OnAttachComponentToSelected;
 
     private:
         void DrawDirectoryTree(const std::filesystem::path& dir);
@@ -45,11 +48,15 @@ namespace Engine {
         std::filesystem::path m_RootPath;
         std::filesystem::path m_CurrentPath;
 
-        char m_NewClassName[64]{"MyActor"};
-        bool m_bShowCreateClassModal{false};
+        // Create Class Wizard with Parent Class Search
+        bool m_bShowCreateClassWizard{false};
+        char m_WizardClassName[64]{"MyNewEntity"};
+        char m_WizardParentClass[64]{"Actor"};
+        char m_ParentSearchFilter[64]{""};
 
-        char m_NewComponentName[64]{"MyCustomComponent"};
-        bool m_bShowCreateComponentModal{false};
+        // New Folder Modal
+        bool m_bShowNewFolderModal{false};
+        char m_NewFolderName[64]{"NewFolder"};
 
         char m_RenameBuffer[128]{""};
         std::filesystem::path m_ItemToRename;

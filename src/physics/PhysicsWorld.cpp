@@ -96,65 +96,43 @@ namespace Engine {
                 auto bodyA = GetBodyAdapter(actors[i].get());
                 if (!bodyA) continue;
 
-                // Collision with floor plane (Y = 0)
-                if (!bodyA->bIsStatic) {
-                    float bottomY = actors[i]->Transform.Position.y;
-                    if (bottomY - bodyA->RadiusOrHalfH < 0.0f) {
-                        float penetration = -(bottomY - bodyA->RadiusOrHalfH);
-                        actors[i]->Transform.Position.y += penetration;
-
-                        if (bodyA->LinearVelocity.y < 0.0f) {
-                            bodyA->LinearVelocity.y = -bodyA->LinearVelocity.y * bodyA->Restitution;
-                            bodyA->LinearVelocity.x *= (1.0f - bodyA->Friction);
-                            bodyA->LinearVelocity.z *= (1.0f - bodyA->Friction);
-
-                            if (std::abs(bodyA->LinearVelocity.y) < 0.15f) {
-                                bodyA->LinearVelocity.y = 0.0f;
-                            }
-                        }
-                    }
-                }
-
-                // Actor vs Actor collisions
+                // Actor vs Actor collisions (no artificial floor - objects fall naturally if no ground collider exists)
                 for (size_t j = i + 1; j < actors.size(); ++j) {
                     auto bodyB = GetBodyAdapter(actors[j].get());
                     if (!bodyB) continue;
                     if (bodyA->bIsStatic && bodyB->bIsStatic) continue;
 
-                    // Sphere vs Sphere
-                    if (bodyA->bIsSphere && bodyB->bIsSphere) {
-                        float rA = bodyA->RadiusOrHalfH;
-                        float rB = bodyB->RadiusOrHalfH;
-                        glm::vec3 delta = actors[i]->Transform.Position - actors[j]->Transform.Position;
-                        float dist = glm::length(delta);
-                        float minDist = rA + rB;
+                    float rA = bodyA->RadiusOrHalfH;
+                    float rB = bodyB->RadiusOrHalfH;
+                    glm::vec3 delta = actors[i]->Transform.Position - actors[j]->Transform.Position;
+                    float dist = glm::length(delta);
+                    float minDist = rA + rB;
 
-                        if (dist < minDist && dist > 0.0001f) {
-                            glm::vec3 normal = delta / dist;
-                            float penetration = minDist - dist;
+                    if (dist < minDist && dist > 0.0001f) {
+                        glm::vec3 normal = delta / dist;
+                        float penetration = minDist - dist;
 
-                            if (!bodyA->bIsStatic && !bodyB->bIsStatic) {
-                                actors[i]->Transform.Position += normal * (penetration * 0.5f);
-                                actors[j]->Transform.Position -= normal * (penetration * 0.5f);
-                            } else if (!bodyA->bIsStatic) {
-                                actors[i]->Transform.Position += normal * penetration;
-                            } else if (!bodyB->bIsStatic) {
-                                actors[j]->Transform.Position -= normal * penetration;
-                            }
+                        if (!bodyA->bIsStatic && !bodyB->bIsStatic) {
+                            actors[i]->Transform.Position += normal * (penetration * 0.5f);
+                            actors[j]->Transform.Position -= normal * (penetration * 0.5f);
+                        } else if (!bodyA->bIsStatic) {
+                            actors[i]->Transform.Position += normal * penetration;
+                        } else if (!bodyB->bIsStatic) {
+                            actors[j]->Transform.Position -= normal * penetration;
+                        }
 
-                            glm::vec3 relVel = bodyA->LinearVelocity - bodyB->LinearVelocity;
-                            float velAlongNormal = glm::dot(relVel, normal);
+                        glm::vec3 relVel = bodyA->LinearVelocity - bodyB->LinearVelocity;
+                        float velAlongNormal = glm::dot(relVel, normal);
 
-                            if (velAlongNormal < 0.0f) {
-                                float e = std::min(bodyA->Restitution, bodyB->Restitution);
-                                float invMassA = bodyA->bIsStatic ? 0.0f : (1.0f / bodyA->Mass);
-                                float invMassB = bodyB->bIsStatic ? 0.0f : (1.0f / bodyB->Mass);
-                                float jImpulse = -(1.0f + e) * velAlongNormal / (invMassA + invMassB);
-                                glm::vec3 impulse = normal * jImpulse;
+                        if (velAlongNormal < 0.0f) {
+                            float e = std::min(bodyA->Restitution, bodyB->Restitution);
+                            float invMassA = bodyA->bIsStatic ? 0.0f : (1.0f / bodyA->Mass);
+                            float invMassB = bodyB->bIsStatic ? 0.0f : (1.0f / bodyB->Mass);
+                            float jImpulse = -(1.0f + e) * velAlongNormal / (invMassA + invMassB);
+                            glm::vec3 impulse = normal * jImpulse;
 
-                                if (!bodyA->bIsStatic) bodyA->LinearVelocity += impulse * invMassA;
-                                if (!bodyB->bIsStatic) bodyB->LinearVelocity -= impulse * invMassB;
-                            }
+                            if (!bodyA->bIsStatic) bodyA->LinearVelocity += impulse * invMassA;
+                            if (!bodyB->bIsStatic) bodyB->LinearVelocity -= impulse * invMassB;
                         }
                     }
                 }

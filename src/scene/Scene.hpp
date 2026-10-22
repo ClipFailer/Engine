@@ -57,6 +57,11 @@ namespace Engine {
         Actor* SpawnLightActor(const std::string& name, LightType type);
 
         /**
+         * @brief Clears all actors from the level creating an empty scene.
+         */
+        void ClearAllActors() { m_Actors.clear(); }
+
+        /**
          * @brief Destroys and removes an actor from the scene.
          * @param actor Actor to destroy.
          */

@@ -49,6 +49,13 @@ namespace Engine {
          */
         void Shutdown();
 
+        /**
+         * @brief Opens a game project file and resets editor context.
+         * @param projectFilePath Path to .uproj file.
+         * @param bEmptyScene If true, clears the scene to a clean blank canvas.
+         */
+        void OpenProject(const std::filesystem::path& projectFilePath, bool bEmptyScene = false);
+
     private:
         void InitImGui();
         void ShutdownImGui();
@@ -75,6 +82,8 @@ namespace Engine {
         std::unique_ptr<ActorDetailWindow> m_ActorDetailWindow;
         std::unique_ptr<SettingsDialogs> m_SettingsDialogs;
         std::unique_ptr<class CodeEditorWindow> m_CodeEditorWindow;
+        std::unique_ptr<class UIDesignerWindow> m_UIDesignerWindow;
+        std::unique_ptr<class ProjectHubWindow> m_ProjectHubWindow;
 
         bool m_bShowNewProjectModal{false};
         char m_NewProjectName[64]{"MyNewGame"};

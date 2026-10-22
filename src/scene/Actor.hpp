@@ -58,6 +58,19 @@ namespace Engine {
         }
 
         /**
+         * @brief Adds an already instantiated component pointer to this actor.
+         * @param comp Unique pointer to component.
+         * @return Raw pointer to added component.
+         */
+        Component* AddComponent(std::unique_ptr<Component> comp) {
+            if (!comp) return nullptr;
+            comp->SetOwner(this);
+            Component* ptr = comp.get();
+            m_Components.push_back(std::move(comp));
+            return ptr;
+        }
+
+        /**
          * @brief Searches for the first component of type T.
          * @tparam T Component class type.
          * @return Pointer to component or nullptr if not found.

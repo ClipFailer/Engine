@@ -1,0 +1,14 @@
+CompileFlags:
+  Add:
+    - "-IC:/Projects/Vulkan/Engine/src"
+    - "-IC:/Projects/Vulkan/Engine/external"
+    - "-IC:/Projects/Vulkan/Engine/build/_deps/glm-src"
+    - "-IC:/Projects/Vulkan/Engine/build/_deps/nlohmann_json-src/include"
+    - "-IC:/Projects/Vulkan/Engine/build/_deps/imgui-src"
+    - "-IC:/Projects/Vulkan/Engine/build/_deps/imgui-src/backends"
+    - "-IC:/Projects/Vulkan/Engine/build/_deps/glfw-src/include"
+    - "-isystem"
+    - "C:/VulkanSDK/1.4.363.0/Include"
+    - "-std=c++20"
+    - "-D_CRT_SECURE_NO_WARNINGS"
+    - "-DNOMINMAX"

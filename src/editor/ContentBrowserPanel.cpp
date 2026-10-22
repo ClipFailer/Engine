@@ -1,12 +1,15 @@
 /**
  * @file ContentBrowserPanel.cpp
- * @brief Implementation of ContentBrowserPanel with file opening, spawning actors, and asset management.
+ * @brief Implementation of ContentBrowserPanel with class creation wizard, actor dragging, UI widget creation, and folder management.
  */
 
 #include "ContentBrowserPanel.hpp"
 #include "scene/Scene.hpp"
+#include "reflection/Reflection.hpp"
 #include "core/Log.hpp"
 #include <imgui.h>
+#include <fstream>
+#include <algorithm>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -27,6 +30,16 @@ namespace Engine {
         ShellExecuteA(NULL, "explore", p.c_str(), NULL, NULL, SW_SHOWNORMAL);
 #else
         std::string cmd = "xdg-open \"" + path.string() + "\" &";
+        system(cmd.c_str());
+#endif
+    }
+
+    static void OpenInVSCode(const std::filesystem::path& path) {
+#if defined(_WIN32)
+        std::string p = path.string();
+        ShellExecuteA(NULL, "open", p.c_str(), NULL, NULL, SW_SHOWNORMAL);
+#else
+        std::string cmd = "code \"" + path.string() + "\" &";
         system(cmd.c_str());
 #endif
     }
@@ -68,49 +81,106 @@ namespace Engine {
 
         ImGui::Columns(1);
 
-        // Modal: Create C++ Actor Class
-        if (m_bShowCreateClassModal) {
-            ImGui::OpenPopup("Create C++ Actor Class###CreateActorModal");
+        // Modal: Create Class Wizard (with Parent Class Search)
+        if (m_bShowCreateClassWizard) {
+            ImGui::OpenPopup("Create C++ Class###CreateClassWizardModal");
         }
-        if (ImGui::BeginPopupModal("Create C++ Actor Class###CreateActorModal", &m_bShowCreateClassModal, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Enter new Actor class name (derived from Engine::Actor):");
-            ImGui::InputText("##ActorClassName", m_NewClassName, sizeof(m_NewClassName));
+        if (ImGui::BeginPopupModal("Create C++ Class###CreateClassWizardModal", &m_bShowCreateClassWizard, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Enter New Class Name:");
+            ImGui::InputText("##WizardClassName", m_WizardClassName, sizeof(m_WizardClassName));
             ImGui::Spacing();
 
-            if (ImGui::Button("Create Actor Class", ImVec2(140, 0))) {
-                if (m_Project && m_Project->GenerateActorClass(m_NewClassName)) {
-                    LOG_INFO("Created C++ Actor class: {}", m_NewClassName);
+            ImGui::Text("Select Parent Class:");
+            ImGui::InputTextWithHint("##SearchParent", "Search parent class...", m_ParentSearchFilter, sizeof(m_ParentSearchFilter));
+
+            std::vector<std::string> parentOptions = {"Actor", "Character", "Component", "UIWidget"};
+            // Also add all reflected classes from TypeRegistry
+            for (const auto& [name, desc] : TypeRegistry::Get().GetAllClasses()) {
+                if (std::find(parentOptions.begin(), parentOptions.end(), name) == parentOptions.end()) {
+                    parentOptions.push_back(name);
                 }
-                m_bShowCreateClassModal = false;
+            }
+
+            std::string filter(m_ParentSearchFilter);
+            std::transform(filter.begin(), filter.end(), filter.begin(), ::tolower);
+
+            ImGui::BeginChild("ParentClassList", ImVec2(340, 140), true);
+            for (const auto& opt : parentOptions) {
+                std::string lowerOpt = opt;
+                std::transform(lowerOpt.begin(), lowerOpt.end(), lowerOpt.begin(), ::tolower);
+                if (!filter.empty() && lowerOpt.find(filter) == std::string::npos) continue;
+
+                bool isSelected = (std::string(m_WizardParentClass) == opt);
+                if (ImGui::Selectable(opt.c_str(), isSelected)) {
+                    std::strncpy(m_WizardParentClass, opt.c_str(), sizeof(m_WizardParentClass) - 1);
+                }
+            }
+            ImGui::EndChild();
+
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Class %s will inherit from %s", m_WizardClassName, m_WizardParentClass);
+            ImGui::Separator();
+
+            if (ImGui::Button("Create Class", ImVec2(130, 28))) {
+                std::string parentStr(m_WizardParentClass);
+                std::string classStr(m_WizardClassName);
+
+                if (parentStr == "UIWidget") {
+                    // Create UI Widget file (.ui)
+                    std::filesystem::path uiPath = m_CurrentPath / (classStr + ".ui");
+                    std::ofstream out(uiPath);
+                    out << "<div class='widget'>\n  <h1>" << classStr << "</h1>\n  <button>Click</button>\n</div>\n<style>\n.widget { background: #1c2026; color: #4dabf7; padding: 12px; border-radius: 6px; }\n</style>\n";
+                    out.close();
+                    LOG_INFO("Created UI Widget: {}", uiPath.string());
+                } else if (parentStr == "Component") {
+                    if (m_Project) m_Project->GenerateComponentClass(classStr);
+                } else if (parentStr == "Character") {
+                    // Generate Character subclass
+                    std::filesystem::path srcDir = m_Project ? m_Project->GetSourceDirectory() : m_CurrentPath;
+                    std::filesystem::create_directories(srcDir);
+                    std::ofstream h(srcDir / (classStr + ".hpp"));
+                    h << "#pragma once\n#include \"scene/Character.hpp\"\n\nclass " << classStr << " : public Engine::Character {\n    GENERATED_BODY()\npublic:\n    " << classStr << "();\n    void BeginPlay() override;\n};\n";
+                    h.close();
+
+                    std::ofstream cpp(srcDir / (classStr + ".cpp"));
+                    cpp << "#include \"" << classStr << ".hpp\"\n\n" << classStr << "::" << classStr << "() : Engine::Character(\"" << classStr << "\") {}\nvoid " << classStr << "::BeginPlay() { Engine::Character::BeginPlay(); }\n\nENGINE_CLASS_BEGIN(" << classStr << ", Character)\nENGINE_CLASS_END()\n";
+                    cpp.close();
+                    LOG_INFO("Created Character C++ class: {}", classStr);
+                } else {
+                    if (m_Project) m_Project->GenerateActorClass(classStr);
+                }
+
+                m_bShowCreateClassWizard = false;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", ImVec2(100, 0))) {
-                m_bShowCreateClassModal = false;
+            if (ImGui::Button("Cancel", ImVec2(90, 28))) {
+                m_bShowCreateClassWizard = false;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
 
-        // Modal: Create C++ Component Class
-        if (m_bShowCreateComponentModal) {
-            ImGui::OpenPopup("Create C++ Component Class###CreateCompModal");
+        // Modal: Create Folder
+        if (m_bShowNewFolderModal) {
+            ImGui::OpenPopup("Create Folder###NewFolderModal");
         }
-        if (ImGui::BeginPopupModal("Create C++ Component Class###CreateCompModal", &m_bShowCreateComponentModal, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Enter new Component class name (derived from Engine::Component):");
-            ImGui::InputText("##CompClassName", m_NewComponentName, sizeof(m_NewComponentName));
+        if (ImGui::BeginPopupModal("Create Folder###NewFolderModal", &m_bShowNewFolderModal, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Enter Folder Name:");
+            ImGui::InputText("##NewFolderName", m_NewFolderName, sizeof(m_NewFolderName));
             ImGui::Spacing();
 
-            if (ImGui::Button("Create Component Class", ImVec2(160, 0))) {
-                if (m_Project && m_Project->GenerateComponentClass(m_NewComponentName)) {
-                    LOG_INFO("Created C++ Component class: {}", m_NewComponentName);
+            if (ImGui::Button("Create", ImVec2(100, 26))) {
+                if (strlen(m_NewFolderName) > 0) {
+                    std::filesystem::create_directories(m_CurrentPath / m_NewFolderName);
+                    LOG_INFO("Created folder: {}", (m_CurrentPath / m_NewFolderName).string());
                 }
-                m_bShowCreateComponentModal = false;
+                m_bShowNewFolderModal = false;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", ImVec2(100, 0))) {
-                m_bShowCreateComponentModal = false;
+            if (ImGui::Button("Cancel", ImVec2(80, 26))) {
+                m_bShowNewFolderModal = false;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -125,7 +195,7 @@ namespace Engine {
             ImGui::InputText("##NewItemName", m_RenameBuffer, sizeof(m_RenameBuffer));
             ImGui::Spacing();
 
-            if (ImGui::Button("Rename", ImVec2(100, 0))) {
+            if (ImGui::Button("Rename", ImVec2(100, 26))) {
                 if (strlen(m_RenameBuffer) > 0) {
                     std::filesystem::path newPath = m_ItemToRename.parent_path() / m_RenameBuffer;
                     std::error_code ec;
@@ -140,7 +210,7 @@ namespace Engine {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", ImVec2(100, 0))) {
+            if (ImGui::Button("Cancel", ImVec2(80, 26))) {
                 m_bShowRenameModal = false;
                 ImGui::CloseCurrentPopup();
             }
@@ -219,15 +289,19 @@ namespace Engine {
     void ContentBrowserPanel::DrawFileGrid(Scene& scene) {
         // Background right-click context menu
         if (ImGui::BeginPopupContextWindow(nullptr, ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
-            if (ImGui::MenuItem("New C++ Actor Class...")) {
-                m_bShowCreateClassModal = true;
+            if (ImGui::MenuItem("Create Class...")) {
+                m_bShowCreateClassWizard = true;
             }
-            if (ImGui::MenuItem("New C++ Component Class...")) {
-                m_bShowCreateComponentModal = true;
+            if (ImGui::MenuItem("Create UI Widget...")) {
+                std::filesystem::path uiPath = m_CurrentPath / "NewWidget.ui";
+                std::ofstream out(uiPath);
+                out << "<div class='widget'>\n  <h1>New UI Widget</h1>\n  <button>Interact</button>\n</div>\n<style>\n.widget { background: #1c2026; color: #4dabf7; padding: 12px; border-radius: 6px; }\n</style>\n";
+                out.close();
+                LOG_INFO("Created UI Widget: {}", uiPath.string());
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("New Folder")) {
-                std::filesystem::create_directory(m_CurrentPath / "NewFolder");
+            if (ImGui::MenuItem("New Folder...")) {
+                m_bShowNewFolderModal = true;
             }
             if (ImGui::MenuItem("Save Active Scene Here")) {
                 scene.SaveToFile((m_CurrentPath / "Scene.json").string());
@@ -240,7 +314,7 @@ namespace Engine {
 
         float panelWidth = ImGui::GetContentRegionAvail().x;
         float cellSize = 95.0f;
-        int columnCount = std::max(1, static_cast<int>(panelWidth / cellSize));
+        int columnCount = (std::max)(1, static_cast<int>(panelWidth / cellSize));
         ImGui::Columns(columnCount, nullptr, false);
 
         std::filesystem::path itemToDelete;
@@ -256,12 +330,18 @@ namespace Engine {
                 bool isDir = entry.is_directory();
                 std::string ext = entry.path().extension().string();
                 bool isCppOrHeader = (ext == ".cpp" || ext == ".hpp" || ext == ".h");
+                bool isActorAsset = (ext == ".actor");
+                bool isUIWidget = (ext == ".ui" || ext == ".uwidget");
 
                 ImVec4 btnColor = isDir ? ImVec4(0.22f, 0.35f, 0.48f, 1.0f) :
+                                  isActorAsset ? ImVec4(0.2f, 0.45f, 0.8f, 1.0f) :
+                                  isUIWidget ? ImVec4(0.18f, 0.52f, 0.50f, 1.0f) :
                                   isCppOrHeader ? ImVec4(0.25f, 0.40f, 0.25f, 1.0f) :
                                   ImVec4(0.18f, 0.18f, 0.22f, 1.0f);
 
                 const char* iconLabel = isDir ? "[DIR]" :
+                                        isActorAsset ? "[ACTOR]" :
+                                        isUIWidget ? "[UI]" :
                                         (ext == ".cpp") ? "[CPP]" :
                                         (ext == ".hpp" || ext == ".h") ? "[HPP]" :
                                         (ext == ".json") ? "[SCENE]" : "[FILE]";
@@ -279,24 +359,39 @@ namespace Engine {
                 }
                 ImGui::PopStyleColor();
 
-                // Double-click to open file / enter directory
+                // Double-click actions
                 if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                     if (isDir) {
                         m_CurrentPath /= entry.path().filename();
                         ImGui::PopID();
                         break;
-                    } else {
+                    } else if (isActorAsset) {
+                        if (OnActorAssetDoubleClicked) {
+                            OnActorAssetDoubleClicked(entry.path().stem().string());
+                        }
+                    } else if (isUIWidget) {
+                        if (OnUIDoubleClicked) {
+                            OnUIDoubleClicked(entry.path());
+                        }
+                    } else if (isCppOrHeader) {
+                        // Double-click opens internally in CodeEditorWindow
                         if (OnFileDoubleClicked) {
                             OnFileDoubleClicked(entry.path());
                         }
                     }
                 }
 
-                // Drag source: drag file or folder to move it
+                // Drag source: drag onto 3D viewport or folders
                 if (ImGui::BeginDragDropSource()) {
-                    std::string pathStr = entry.path().string();
-                    ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", pathStr.c_str(), pathStr.size() + 1);
-                    ImGui::Text("Move %s", filename.c_str());
+                    if (isActorAsset || isCppOrHeader) {
+                        std::string stem = entry.path().stem().string();
+                        ImGui::SetDragDropPayload("ACTOR_ASSET", stem.c_str(), stem.size() + 1);
+                        ImGui::Text("Spawn Actor: %s", stem.c_str());
+                    } else {
+                        std::string pathStr = entry.path().string();
+                        ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", pathStr.c_str(), pathStr.size() + 1);
+                        ImGui::Text("Move %s", filename.c_str());
+                    }
                     ImGui::EndDragDropSource();
                 }
 
@@ -316,26 +411,67 @@ namespace Engine {
 
                 // Item Right-Click Context Menu
                 if (ImGui::BeginPopupContextItem()) {
+                    std::string stemName = entry.path().stem().string();
+
                     if (isCppOrHeader) {
-                        std::string stemName = entry.path().stem().string();
-                        std::string spawnLabel = "Spawn Object in Scene (" + stemName + ")";
+                        // Create Actor Representation
+                        std::string actorAssetLabel = "Create Actor Representation (" + stemName + ".actor)";
+                        if (ImGui::MenuItem(actorAssetLabel.c_str())) {
+                            std::filesystem::path actorFile = entry.path().parent_path() / (stemName + ".actor");
+                            std::ofstream out(actorFile);
+                            out << "{\n  \"class\": \"" << stemName << "\"\n}\n";
+                            out.close();
+                            LOG_INFO("Created Actor Representation: {}", actorFile.string());
+                        }
+
+                        std::string spawnLabel = "Spawn in Scene (" + stemName + ")";
                         if (ImGui::MenuItem(spawnLabel.c_str())) {
                             auto newActor = scene.SpawnActor(stemName);
                             newActor->Transform.Position = glm::vec3(0.0f, 1.5f, 0.0f);
                             if (OnSpawnActorFromClass) {
                                 OnSpawnActorFromClass(stemName);
                             }
-                            LOG_INFO("Created Actor '{}' on scene from code file {}", stemName, filename);
+                            LOG_INFO("Created Actor '{}' on scene from code file", stemName);
                         }
+
+                        if (filename.find("Component") != std::string::npos) {
+                            if (ImGui::MenuItem("Attach Component to Selected Actor")) {
+                                if (OnAttachComponentToSelected) {
+                                    OnAttachComponentToSelected(stemName);
+                                }
+                            }
+                        }
+
                         ImGui::Separator();
-                    }
-
-                    if (!isDir && ImGui::MenuItem("Open File (Editor & VS Code)")) {
-                        if (OnFileDoubleClicked) {
-                            OnFileDoubleClicked(entry.path());
+                        if (ImGui::MenuItem("Open in VS Code")) {
+                            OpenInVSCode(entry.path());
+                        }
+                        if (ImGui::MenuItem("Open in Internal Code Editor")) {
+                            if (OnFileDoubleClicked) OnFileDoubleClicked(entry.path());
+                        }
+                    } else if (isActorAsset) {
+                        if (ImGui::MenuItem("Spawn Actor in Scene")) {
+                            auto newActor = scene.SpawnActor(stemName);
+                            newActor->Transform.Position = glm::vec3(0.0f, 1.5f, 0.0f);
+                            if (OnSpawnActorFromClass) OnSpawnActorFromClass(stemName);
+                        }
+                        if (ImGui::MenuItem("Open Actor Settings (3D Preview)")) {
+                            if (OnActorAssetDoubleClicked) OnActorAssetDoubleClicked(stemName);
+                        }
+                    } else if (isUIWidget) {
+                        if (ImGui::MenuItem("Open in UI Designer")) {
+                            if (OnUIDoubleClicked) OnUIDoubleClicked(entry.path());
+                        }
+                    } else if (!isDir) {
+                        if (ImGui::MenuItem("Open in VS Code")) {
+                            OpenInVSCode(entry.path());
+                        }
+                        if (ImGui::MenuItem("Open in Internal Code Editor")) {
+                            if (OnFileDoubleClicked) OnFileDoubleClicked(entry.path());
                         }
                     }
 
+                    ImGui::Separator();
                     if (ImGui::MenuItem("Rename...")) {
                         m_ItemToRename = entry.path();
                         std::strncpy(m_RenameBuffer, filename.c_str(), sizeof(m_RenameBuffer) - 1);

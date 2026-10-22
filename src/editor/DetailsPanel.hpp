@@ -38,6 +38,9 @@ namespace Engine {
         Project* m_Project{nullptr};
         bool m_bShowCreateComponentModal{false};
         char m_NewComponentName[64]{"CustomGameplayComponent"};
+
+        bool m_bShowAttachByNameModal{false};
+        char m_AttachComponentName[64]{"MyCustomComponent"};
     };
 
 } // namespace Engine
