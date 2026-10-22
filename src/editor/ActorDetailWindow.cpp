@@ -103,35 +103,37 @@ namespace Engine {
             // 1. Menu Bar
             if (ImGui::BeginMenuBar()) {
                 if (ImGui::MenuItem("<- Back to Main Editor")) {
-                    Close();
+                    m_bIsOpen = false;
                 }
 
-                ImGui::Separator();
-                ImGui::Text("Editing: %s (%s)", m_TargetActor->GetName().c_str(), m_TargetActor->Tag.c_str());
+                if (m_TargetActor) {
+                    ImGui::Separator();
+                    ImGui::Text("Editing: %s (%s)", m_TargetActor->GetName().c_str(), m_TargetActor->Tag.c_str());
 
-                ImGui::Separator();
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.52f, 0.28f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.65f, 0.35f, 1.0f));
-                if (ImGui::Button("Save .actor Asset (Ctrl+S)", ImVec2(170, 22))) {
-                    SaveCurrentAsset();
-                }
-                ImGui::PopStyleColor(2);
+                    ImGui::Separator();
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.52f, 0.28f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.65f, 0.35f, 1.0f));
+                    if (ImGui::Button("Save .actor Asset (Ctrl+S)", ImVec2(170, 22))) {
+                        SaveCurrentAsset();
+                    }
+                    ImGui::PopStyleColor(2);
 
-                std::filesystem::path p(m_AssociatedAssetPath);
-                ImGui::TextDisabled("File: %s", p.filename().string().c_str());
+                    std::filesystem::path p(m_AssociatedAssetPath);
+                    ImGui::TextDisabled("File: %s", p.filename().string().c_str());
 
-                if (m_SaveNotificationTimer > 0.0f) {
-                    ImGui::TextColored(ImVec4(0.3f, 0.95f, 0.45f, 1.0f), "[Saved to .actor!]");
-                } else if (m_bDirty) {
-                    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.25f, 1.0f), "[Unsaved changes]");
-                }
+                    if (m_SaveNotificationTimer > 0.0f) {
+                        ImGui::TextColored(ImVec4(0.3f, 0.95f, 0.45f, 1.0f), "[Saved to .actor!]");
+                    } else if (m_bDirty) {
+                        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.25f, 1.0f), "[Unsaved changes]");
+                    }
 
-                if (auto coll = m_TargetActor->GetComponent<CollisionComponent>()) {
-                    if (auto mesh = m_TargetActor->GetComponent<StaticMeshComponent>()) {
-                        ImGui::Separator();
-                        if (ImGui::MenuItem("Fit Collision to Mesh")) {
-                            coll->FitToMesh(*mesh);
-                            SaveCurrentAsset();
+                    if (auto coll = m_TargetActor->GetComponent<CollisionComponent>()) {
+                        if (auto mesh = m_TargetActor->GetComponent<StaticMeshComponent>()) {
+                            ImGui::Separator();
+                            if (ImGui::MenuItem("Fit Collision to Mesh")) {
+                                coll->FitToMesh(*mesh);
+                                SaveCurrentAsset();
+                            }
                         }
                     }
                 }
@@ -173,10 +175,14 @@ namespace Engine {
             ImGui::Columns(1);
         }
         ImGui::End();
+
+        if (!m_bIsOpen) {
+            Close();
+        }
     }
 
     void ActorDetailWindow::Draw3DPreview(ImVec2 canvasSize) {
-        if (canvasSize.x < 10.0f || canvasSize.y < 10.0f) return;
+        if (!m_TargetActor || canvasSize.x < 10.0f || canvasSize.y < 10.0f) return;
 
         ImGuiIO& io = ImGui::GetIO();
         ImVec2 canvasPos = ImGui::GetCursorScreenPos();
@@ -406,6 +412,7 @@ namespace Engine {
     }
 
     void ActorDetailWindow::DrawInspectorPanel() {
+        if (!m_TargetActor) return;
         bool bChanged = false;
 
         // 1. General Info & Tag
