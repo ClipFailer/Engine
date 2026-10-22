@@ -1,0 +1,27 @@
+# Build directories
+build/
+bin/
+lib/
+out/
+.cache/
+
+# Visual Studio / IDEs
+.vs/
+*.sln
+*.vcxproj*
+*.user
+.vscode/
+.idea/
+
+# Shaders compiled binaries
+*.spv
+
+# Doxygen generated docs (can be built on demand)
+docs/html/
+docs/latex/
+
+# Logs & temp
+*.log
+*.tmp
+*.pdb
+*.ilk
