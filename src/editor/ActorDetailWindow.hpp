@@ -28,6 +28,7 @@ namespace Engine {
         void Open(Actor* actor) {
             m_TargetActor = actor;
             m_bIsOpen = (actor != nullptr);
+            m_bJustOpened = true;
         }
 
         /**
@@ -49,6 +50,7 @@ namespace Engine {
 
         Actor* m_TargetActor{nullptr};
         bool m_bIsOpen{false};
+        bool m_bJustOpened{false};
 
         // Orbit camera state for 3D inspection
         float m_CamYaw{35.0f};

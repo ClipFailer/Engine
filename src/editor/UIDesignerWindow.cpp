@@ -11,6 +11,17 @@
 #include <fstream>
 #include <sstream>
 
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <shellapi.h>
+#endif
+
 namespace Engine {
 
     UIDesignerWindow::UIDesignerWindow() {
@@ -81,6 +92,16 @@ namespace Engine {
                             }
                         }
                     }
+                    if (ImGui::MenuItem("Open in VS Code")) {
+                        if (!m_ActiveFilePath.empty()) {
+#if defined(_WIN32)
+                            ShellExecuteA(NULL, "open", m_ActiveFilePath.string().c_str(), NULL, NULL, SW_SHOWNORMAL);
+#else
+                            std::string cmd = "code \"" + m_ActiveFilePath.string() + "\" &";
+                            system(cmd.c_str());
+#endif
+                        }
+                    }
                     if (ImGui::MenuItem("Close")) m_bIsOpen = false;
                     ImGui::EndMenu();
                 }
@@ -113,6 +134,17 @@ namespace Engine {
                         out << m_HTMLBuffer.data() << "\n<style>\n" << m_CSSBuffer.data() << "\n</style>\n";
                         LOG_INFO("Saved UI Widget: {}", m_ActiveFilePath.string());
                     }
+                }
+            }
+            if (!m_ActiveFilePath.empty()) {
+                ImGui::SameLine();
+                if (ImGui::Button("Open in VS Code")) {
+#if defined(_WIN32)
+                    ShellExecuteA(NULL, "open", m_ActiveFilePath.string().c_str(), NULL, NULL, SW_SHOWNORMAL);
+#else
+                    std::string cmd = "code \"" + m_ActiveFilePath.string() + "\" &";
+                    system(cmd.c_str());
+#endif
                 }
             }
             ImGui::SameLine();

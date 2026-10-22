@@ -463,7 +463,10 @@ namespace Engine {
                             if (OnActorAssetDoubleClicked) OnActorAssetDoubleClicked(stemName);
                         }
                     } else if (isUIWidget) {
-                        if (ImGui::MenuItem("Open in UI Designer")) {
+                        if (ImGui::MenuItem("Open in VS Code")) {
+                            OpenInVSCode(entry.path());
+                        }
+                        if (ImGui::MenuItem("Open in UI Designer (Live Preview)")) {
                             if (OnUIDoubleClicked) OnUIDoubleClicked(entry.path());
                         }
                     } else if (isScene) {

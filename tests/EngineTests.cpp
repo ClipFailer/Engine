@@ -406,6 +406,42 @@ namespace EngineTests {
         return true;
     }
 
+    bool TestActorToActorCollision() {
+        Engine::Scene scene;
+        scene.ClearAllActors();
+
+        Engine::PhysicsWorld world;
+        world.Gravity = glm::vec3(0.0f, -9.81f, 0.0f);
+
+        // Ground box collider (large plane 20x0.2x20)
+        auto ground = scene.SpawnActor("GroundObstacle");
+        ground->Transform.Position = glm::vec3(0.0f, 0.0f, 0.0f);
+        auto groundRb = ground->AddComponent<Engine::RigidBodyComponent>();
+        groundRb->bIsStatic = true;
+        groundRb->bUseGravity = false;
+        groundRb->Shape = Engine::ColliderType::Box;
+        groundRb->ColliderDimensions = glm::vec3(10.0f, 0.1f, 10.0f);
+
+        // Dynamic falling box (spawned above ground at X=3, Y=1.5, Z=3)
+        auto cube = scene.SpawnActor("FallingBox");
+        cube->Transform.Position = glm::vec3(3.0f, 1.5f, 3.0f);
+        auto cubeRb = cube->AddComponent<Engine::RigidBodyComponent>();
+        cubeRb->Mass = 1.0f;
+        cubeRb->Shape = Engine::ColliderType::Box;
+        cubeRb->ColliderDimensions = glm::vec3(0.5f, 0.5f, 0.5f);
+
+        // Step physics world multiple times
+        for (int i = 0; i < 60; ++i) {
+            world.Step(scene, 0.016f);
+        }
+
+        // Cube should land on the ground (around Y = 0.1 + 0.5 = 0.6) and NOT fall through
+        TEST_ASSERT(cube->Transform.Position.y >= 0.55f, "Falling box penetrated through ground floor collider!");
+        TEST_ASSERT(cube->Transform.Position.y <= 0.75f, "Falling box failed to settle on ground surface");
+
+        return true;
+    }
+
 } // namespace EngineTests
 
 int main() {
@@ -414,7 +450,7 @@ int main() {
     std::cout << "========================================\n";
 
     int passed = 0;
-    int total = 12;
+    int total = 13;
 
     auto runTest = [&](const char* name, bool(*func)()) {
         std::cout << "[RUNNING] " << name << "... ";
@@ -438,6 +474,7 @@ int main() {
     runTest("Project Scaffolding & Dynamic Class Generator", EngineTests::TestProjectScaffolding);
     runTest("Character Locomotion, UI & Custom Components", EngineTests::TestCharacterAndUIComponents);
     runTest("Scene Persistence, Coordinates & Component State", EngineTests::TestSceneSerializationAndCoordinates);
+    runTest("Actor-to-Actor 3D Collision Resolution", EngineTests::TestActorToActorCollision);
 
     std::cout << "========================================\n";
     std::cout << "Tests Passed: " << passed << " / " << total << "\n";

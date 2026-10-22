@@ -31,9 +31,12 @@ namespace Engine {
          */
         void Render(Actor* actor);
 
+        std::function<void(Actor*)> OnOpenActorDetail;
+
     private:
         void DrawTransformControl(const std::string& label, glm::vec3& values, float resetValue = 0.0f);
         void DrawReflectedProperty(const PropertyDescriptor& prop, void* instance);
+        void DrawUnityCollisionControls(class CollisionComponent& coll, Actor* actor);
 
         Project* m_Project{nullptr};
         bool m_bShowCreateComponentModal{false};

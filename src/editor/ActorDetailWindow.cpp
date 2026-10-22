@@ -36,14 +36,19 @@ namespace Engine {
         }
 
         const ImGuiViewport* vp = ImGui::GetMainViewport();
-        ImGui::SetNextWindowPos(vp->WorkPos);
-        ImGui::SetNextWindowSize(vp->WorkSize);
+        ImGui::SetNextWindowPos(vp->WorkPos, ImGuiCond_Always);
+        ImGui::SetNextWindowSize(vp->WorkSize, ImGuiCond_Always);
+
+        if (m_bJustOpened) {
+            ImGui::SetNextWindowFocus();
+            m_bJustOpened = false;
+        }
 
         ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse |
                                  ImGuiWindowFlags_NoResize |
                                  ImGuiWindowFlags_NoMove |
                                  ImGuiWindowFlags_MenuBar |
-                                 ImGuiWindowFlags_NoBringToFrontOnFocus;
+                                 ImGuiWindowFlags_NoDocking;
 
         std::string title = "Actor Blueprint & 3D Inspector - " + m_TargetActor->GetName() + "###ActorDetailWindow";
 

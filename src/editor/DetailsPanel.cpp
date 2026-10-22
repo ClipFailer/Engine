@@ -40,6 +40,16 @@ namespace Engine {
 
         ImGui::SameLine();
         ImGui::TextDisabled("(%s)", actor->GetClassName().data());
+
+        // Quick open in 3D Actor Detail Window
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.45f, 0.75f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.28f, 0.55f, 0.88f, 1.0f));
+        if (ImGui::Button("Open in 3D Actor Detail Window...", ImVec2(-1, 26.0f))) {
+            if (OnOpenActorDetail) {
+                OnOpenActorDetail(actor);
+            }
+        }
+        ImGui::PopStyleColor(2);
         ImGui::Separator();
 
         // 2. Transform Section (UE5 Styled)
@@ -65,10 +75,14 @@ namespace Engine {
                     }
                     ImGui::EndPopup();
                 }
-                const ClassDescriptor* clsDesc = TypeRegistry::Get().FindClass(comp->GetClassName());
-                if (clsDesc) {
-                    for (const auto& prop : clsDesc->GetProperties()) {
-                        DrawReflectedProperty(prop, comp.get());
+                if (auto coll = dynamic_cast<CollisionComponent*>(comp.get())) {
+                    DrawUnityCollisionControls(*coll, actor);
+                } else {
+                    const ClassDescriptor* clsDesc = TypeRegistry::Get().FindClass(comp->GetClassName());
+                    if (clsDesc) {
+                        for (const auto& prop : clsDesc->GetProperties()) {
+                            DrawReflectedProperty(prop, comp.get());
+                        }
                     }
                 }
             }
@@ -297,6 +311,71 @@ namespace Engine {
         }
 
         ImGui::PopID();
+    }
+
+    void DetailsPanel::DrawUnityCollisionControls(CollisionComponent& coll, Actor* actor) {
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.13f, 0.15f, 0.18f, 1.0f));
+        ImGui::BeginChild("UnityColliderBox", ImVec2(0, 0), true, ImGuiWindowFlags_AlwaysAutoResize);
+
+        ImGui::TextColored(ImVec4(0.3f, 0.85f, 0.45f, 1.0f), "Unity-Style Collider Settings");
+        ImGui::Separator();
+
+        // 1. Edit Collider & Fit to Mesh buttons
+        static bool s_EditColliderMode = false;
+        if (s_EditColliderMode) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.65f, 0.35f, 1.0f));
+        }
+        if (ImGui::Button(s_EditColliderMode ? "[Edit Collider: ACTIVE]" : "Edit Collider", ImVec2(150.0f, 26.0f))) {
+            s_EditColliderMode = !s_EditColliderMode;
+        }
+        if (s_EditColliderMode) {
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Fit to Mesh Geometry", ImVec2(160.0f, 26.0f))) {
+            if (auto mesh = actor->GetComponent<StaticMeshComponent>()) {
+                coll.FitToMesh(*mesh);
+                LOG_INFO("Fitted collision bounds to mesh for Actor '{}'", actor->GetName());
+            }
+        }
+
+        ImGui::Spacing();
+
+        // 2. Is Trigger
+        ImGui::Checkbox("Is Trigger", &coll.bIsTrigger);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("A Trigger detects overlap events without physical solid blocking.");
+        }
+
+        // 3. Shape Selection
+        const char* shapes[] = { "Box Collider", "Sphere Collider" };
+        int currentShape = static_cast<int>(coll.Shape);
+        if (ImGui::Combo("Shape", &currentShape, shapes, IM_ARRAYSIZE(shapes))) {
+            coll.Shape = static_cast<CollisionShape>(currentShape);
+        }
+
+        ImGui::Spacing();
+
+        // 4. Center Offset
+        DrawTransformControl("Center", coll.Offset, 0.0f);
+
+        // 5. Size (Box Half Extents or Sphere Radius)
+        if (coll.Shape == CollisionShape::Box) {
+            DrawTransformControl("Size", coll.BoxHalfExtents, 0.5f);
+        } else {
+            ImGui::DragFloat("Radius", &coll.SphereRadius, 0.05f, 0.01f, 100.0f, "%.2f m");
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+
+        // 6. Physics Material Settings
+        ImGui::SliderFloat("Bounciness (Restitution)", &coll.Restitution, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Dynamic Friction", &coll.Friction, 0.0f, 1.0f, "%.2f");
+
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
     }
 
 } // namespace Engine

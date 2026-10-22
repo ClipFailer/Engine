@@ -129,6 +129,9 @@ namespace Engine {
         m_OutlinerPanel->OnActorDoubleClicked = [this](Actor* a) {
             m_ActorDetailWindow->Open(a);
         };
+        m_DetailsPanel->OnOpenActorDetail = [this](Actor* a) {
+            m_ActorDetailWindow->Open(a);
+        };
         m_ContentBrowserPanel->OnFileDoubleClicked = [this](const std::filesystem::path& path) {
             m_CodeEditorWindow->OpenFile(path);
         };
