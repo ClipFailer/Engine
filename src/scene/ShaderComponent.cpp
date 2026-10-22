@@ -48,8 +48,31 @@ void main() {
         }
     }
 
+    ShaderEffectType ShaderComponent::GetResolvedEffectType() const {
+        if (EffectType != ShaderEffectType::None) {
+            return EffectType;
+        }
+        if (ShaderCode.find("NightVision") != std::string::npos || ShaderCode.find("0.95, 0.2") != std::string::npos) {
+            return ShaderEffectType::NightVision;
+        }
+        if (ShaderCode.find("Sepia") != std::string::npos || ShaderCode.find("0.393") != std::string::npos) {
+            return ShaderEffectType::Sepia;
+        }
+        if (ShaderCode.find("Invert") != std::string::npos || ShaderCode.find("1.0 - color") != std::string::npos) {
+            return ShaderEffectType::Invert;
+        }
+        if (ShaderCode.find("Grayscale") != std::string::npos || (ShaderCode.find("gray") != std::string::npos && ShaderCode.find("0.299") != std::string::npos)) {
+            return ShaderEffectType::Grayscale;
+        }
+        if (ShaderCode.find("vignette") != std::string::npos || ShaderCode.find("Vignette") != std::string::npos) {
+            return ShaderEffectType::Vignette;
+        }
+        return ShaderEffectType::Vignette;
+    }
+
     void ShaderComponent::LoadPreset(const std::string& presetName) {
         if (presetName == "Vignette") {
+            EffectType = ShaderEffectType::Vignette;
             ShaderCode = R"(#version 450
 layout(location = 0) in vec2 inUV;
 layout(location = 0) out vec4 outColor;
@@ -64,6 +87,7 @@ void main() {
 }
 )";
         } else if (presetName == "NightVision") {
+            EffectType = ShaderEffectType::NightVision;
             ShaderCode = R"(#version 450
 layout(location = 0) in vec2 inUV;
 layout(location = 0) out vec4 outColor;
@@ -77,6 +101,7 @@ void main() {
 }
 )";
         } else if (presetName == "Grayscale") {
+            EffectType = ShaderEffectType::Grayscale;
             ShaderCode = R"(#version 450
 layout(location = 0) in vec2 inUV;
 layout(location = 0) out vec4 outColor;
@@ -89,6 +114,7 @@ void main() {
 }
 )";
         } else if (presetName == "Sepia") {
+            EffectType = ShaderEffectType::Sepia;
             ShaderCode = R"(#version 450
 layout(location = 0) in vec2 inUV;
 layout(location = 0) out vec4 outColor;
@@ -104,6 +130,7 @@ void main() {
 }
 )";
         } else if (presetName == "Invert") {
+            EffectType = ShaderEffectType::Invert;
             ShaderCode = R"(#version 450
 layout(location = 0) in vec2 inUV;
 layout(location = 0) out vec4 outColor;
@@ -121,6 +148,7 @@ void main() {
 
     ENGINE_CLASS_BEGIN(ShaderComponent, Component)
         ENGINE_PROPERTY(ShaderComponent, ShaderName, String, "Shader", "Shader Identifier")
+        ENGINE_PROPERTY(ShaderComponent, EffectIntensity, Float, "Shader", "Post-process effect intensity")
         ENGINE_PROPERTY(ShaderComponent, bActiveEverywhere, Bool, "Trigger", "Activate across the entire scene")
         ENGINE_PROPERTY(ShaderComponent, bIsSphereZone, Bool, "Trigger", "Sphere zone shape if true, Box if false")
         ENGINE_PROPERTY(ShaderComponent, TriggerHalfExtents, Vec3, "Trigger", "Box trigger half-dimensions")

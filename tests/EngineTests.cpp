@@ -603,6 +603,7 @@ namespace EngineTests {
         // Preset loading
         sc->LoadPreset("NightVision");
         TEST_ASSERT(sc->ShaderCode.find("vec3(0.1, 0.95, 0.2)") != std::string::npos, "NightVision preset code must contain green tint");
+        TEST_ASSERT(sc->GetResolvedEffectType() == Engine::ShaderEffectType::NightVision, "Resolved effect must be NightVision");
 
         // Serialization & Deserialization
         nlohmann::json j = shaderActor.Serialize();
@@ -613,6 +614,7 @@ namespace EngineTests {
         TEST_ASSERT(restoredSC->bActiveEverywhere == true, "Restored bActiveEverywhere mismatch");
         TEST_ASSERT(restoredSC->bIsSphereZone == true, "Restored bIsSphereZone mismatch");
         TEST_ASSERT(std::abs(restoredSC->TriggerRadius - 4.0f) < 0.01f, "Restored TriggerRadius mismatch");
+        TEST_ASSERT(restoredSC->EffectType == Engine::ShaderEffectType::NightVision, "Restored EffectType mismatch");
         TEST_ASSERT(restoredSC->ShaderCode.find("vec3(0.1, 0.95, 0.2)") != std::string::npos, "Restored ShaderCode mismatch");
 
         return true;

@@ -166,6 +166,8 @@ namespace Engine {
             } else if (auto sc = dynamic_cast<ShaderComponent*>(comp.get())) {
                 c["shader_name"] = sc->ShaderName;
                 c["shader_code"] = sc->ShaderCode;
+                c["effect_type"] = static_cast<uint8>(sc->EffectType);
+                c["effect_intensity"] = sc->EffectIntensity;
                 c["active_everywhere"] = sc->bActiveEverywhere;
                 c["is_sphere_zone"] = sc->bIsSphereZone;
                 c["trigger_half_extents"] = {sc->TriggerHalfExtents.x, sc->TriggerHalfExtents.y, sc->TriggerHalfExtents.z};
@@ -322,6 +324,8 @@ namespace Engine {
                         if (!sc) sc = AddComponent<ShaderComponent>();
                         if (c.contains("shader_name")) sc->ShaderName = c["shader_name"].get<std::string>();
                         if (c.contains("shader_code")) sc->ShaderCode = c["shader_code"].get<std::string>();
+                        if (c.contains("effect_type")) sc->EffectType = static_cast<ShaderEffectType>(c["effect_type"].get<uint8>());
+                        if (c.contains("effect_intensity")) sc->EffectIntensity = c["effect_intensity"].get<float>();
                         if (c.contains("active_everywhere")) sc->bActiveEverywhere = c["active_everywhere"].get<bool>();
                         if (c.contains("is_sphere_zone")) sc->bIsSphereZone = c["is_sphere_zone"].get<bool>();
                         if (c.contains("trigger_half_extents") && c["trigger_half_extents"].size() >= 3) {

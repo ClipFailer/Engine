@@ -464,11 +464,27 @@ namespace Engine {
             ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Programmable GLSL Shader Trigger Volume");
             ImGui::Separator();
 
-            // 1. Active Everywhere toggle
+            // 1. Active Everywhere toggle & Effect Selection
             ImGui::Checkbox("Active Everywhere (Scene-Wide)", &sc.bActiveEverywhere);
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("If enabled, this shader affects the camera across the entire scene, ignoring trigger bounds.");
             }
+
+            const char* effectTypes[] = { "None", "Vignette", "NightVision (Green Phosphor)", "Grayscale (Black & White)", "Sepia (Vintage Warm)", "Invert (Negative Colors)", "Custom / Cyberpunk Tint" };
+            int currentEffect = static_cast<int>(sc.EffectType);
+            if (ImGui::Combo("Visual Effect", &currentEffect, effectTypes, IM_ARRAYSIZE(effectTypes))) {
+                sc.EffectType = static_cast<ShaderEffectType>(currentEffect);
+                switch (sc.EffectType) {
+                    case ShaderEffectType::Vignette:    sc.LoadPreset("Vignette"); break;
+                    case ShaderEffectType::NightVision: sc.LoadPreset("NightVision"); break;
+                    case ShaderEffectType::Grayscale:   sc.LoadPreset("Grayscale"); break;
+                    case ShaderEffectType::Sepia:       sc.LoadPreset("Sepia"); break;
+                    case ShaderEffectType::Invert:      sc.LoadPreset("Invert"); break;
+                    default: break;
+                }
+            }
+
+            ImGui::SliderFloat("Effect Intensity", &sc.EffectIntensity, 0.0f, 2.0f, "%.2fx");
 
             // 2. Trigger Zone configuration (if not active everywhere)
             if (!sc.bActiveEverywhere) {

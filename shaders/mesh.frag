@@ -12,10 +12,10 @@ layout(binding = 0) uniform SceneUBO {
     vec4 dirLightDirAndEnabled;
     vec4 dirLightColorAndIntensity;
     PointLightData pointLights[4];
-    int pointLightCount;
-    int pad1;
-    int pad2;
-    int pad3;
+    ivec4 renderModes; // x: pointLightCount, y: lightingModel, z: toneMappingMode, w: antiAliasingMode
+    vec4 renderParams; // x: exposure, y: gamma, z: aoStrength, w: bloomIntensity
+    ivec4 shaderVolume; // x: active(0/1), y: effectType(1..6), z: unused, w: unused
+    vec4 shaderParams; // x: intensity, y: param1, z: param2, w: param3
 } ubo;
 
 layout(location = 0) in vec3 fragWorldPos;
@@ -71,36 +71,48 @@ void main() {
     vec3 V = normalize(fragCameraPos - fragWorldPos);
     vec3 albedo = fragBaseColor.rgb;
 
-    // Default physical material factors (or derived from vertex inputs)
     float metallic = 0.15;
     float roughness = clamp(0.45, 0.05, 1.0);
 
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
     vec3 Lo = vec3(0.0);
 
+    int lightingModel = ubo.renderModes.y; // 0: PBR, 1: Blinn-Phong, 2: Soft Irradiance
+
     // 1. Directional Sun Light
     if (ubo.dirLightDirAndEnabled.w > 0.5) {
         vec3 L = normalize(-ubo.dirLightDirAndEnabled.xyz);
         vec3 H = normalize(V + L);
         vec3 radiance = ubo.dirLightColorAndIntensity.xyz * ubo.dirLightColorAndIntensity.w;
-
-        float NDF = DistributionGGX(N, H, roughness);
-        float G = GeometrySmith(N, V, L, roughness);
-        vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
-
-        vec3 numerator = NDF * G * F;
-        float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-        vec3 specular = numerator / denominator;
-
-        vec3 kS = F;
-        vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
         float NdotL = max(dot(N, L), 0.0);
 
-        Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+        if (lightingModel == 0) {
+            // PBR Cook-Torrance
+            float NDF = DistributionGGX(N, H, roughness);
+            float G = GeometrySmith(N, V, L, roughness);
+            vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+            vec3 numerator = NDF * G * F;
+            float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
+            vec3 specular = numerator / denominator;
+
+            vec3 kS = F;
+            vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+            Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+        } else if (lightingModel == 1) {
+            // Blinn-Phong
+            float diff = NdotL;
+            float spec = pow(max(dot(N, H), 0.0), mix(16.0, 128.0, 1.0 - roughness));
+            Lo += (albedo * diff + vec3(spec * 0.7)) * radiance;
+        } else {
+            // Soft Irradiance
+            float wrap = max(0.0, (dot(N, L) + 0.5) / 1.5);
+            Lo += albedo * radiance * wrap;
+        }
     }
 
     // 2. Dynamic Point Lights
-    for (int i = 0; i < ubo.pointLightCount && i < 4; ++i) {
+    for (int i = 0; i < ubo.renderModes.x && i < 4; ++i) {
         vec3 lightPos = ubo.pointLights[i].positionAndRadius.xyz;
         float radius = ubo.pointLights[i].positionAndRadius.w;
         vec3 lightColor = ubo.pointLights[i].colorAndIntensity.xyz * ubo.pointLights[i].colorAndIntensity.w;
@@ -111,38 +123,113 @@ void main() {
         if (dist < radius && radius > 0.001) {
             vec3 L = normalize(toLight);
             vec3 H = normalize(V + L);
-
             float atten = clamp(1.0 - (dist / radius), 0.0, 1.0);
-            atten *= atten; // Quadratic attenuation
+            atten *= atten;
             vec3 radiance = lightColor * atten;
-
-            float NDF = DistributionGGX(N, H, roughness);
-            float G = GeometrySmith(N, V, L, roughness);
-            vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
-
-            vec3 numerator = NDF * G * F;
-            float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-            vec3 specular = numerator / denominator;
-
-            vec3 kS = F;
-            vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
             float NdotL = max(dot(N, L), 0.0);
 
-            Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+            if (lightingModel == 0) {
+                float NDF = DistributionGGX(N, H, roughness);
+                float G = GeometrySmith(N, V, L, roughness);
+                vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+                vec3 numerator = NDF * G * F;
+                float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
+                vec3 specular = numerator / denominator;
+
+                vec3 kS = F;
+                vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+                Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+            } else if (lightingModel == 1) {
+                float diff = NdotL;
+                float spec = pow(max(dot(N, H), 0.0), mix(16.0, 128.0, 1.0 - roughness));
+                Lo += (albedo * diff + vec3(spec * 0.7)) * radiance;
+            } else {
+                float wrap = max(0.0, (dot(N, L) + 0.5) / 1.5);
+                Lo += albedo * radiance * wrap;
+            }
         }
     }
 
-    // 3. Ambient Irradiance (Atmospheric sky and ground hemisphere bounce)
-    vec3 skyColor = vec3(0.10, 0.12, 0.16);
+    // 3. Ambient Irradiance & Ambient Occlusion (SSAO)
+    vec3 skyColor = vec3(0.12, 0.15, 0.20);
     vec3 groundColor = vec3(0.04, 0.04, 0.05);
     float hemi = (N.y + 1.0) * 0.5;
-    vec3 ambient = mix(groundColor, skyColor, hemi) * albedo;
+    float aoStrength = ubo.renderParams.z;
+    float ao = clamp(1.0 - aoStrength * (1.0 - max(N.y, 0.0) * 0.7), 0.05, 1.0);
+    vec3 ambient = mix(groundColor, skyColor, hemi) * albedo * ao;
+
+    // 4. HDR Bloom threshold addition
+    float bloomIntensity = ubo.renderParams.w;
+    if (bloomIntensity > 0.001) {
+        float lum = dot(Lo, vec3(0.2126, 0.7152, 0.0722));
+        if (lum > 0.75) {
+            Lo += Lo * (lum - 0.75) * bloomIntensity * 2.0;
+        }
+    }
 
     vec3 color = ambient + Lo;
 
-    // ACES Filmic Tone Mapping and Gamma correction for rich contrast
-    color = ACESFilm(color);
-    color = pow(color, vec3(1.0 / 2.2));
+    // 5. Exposure Compensation
+    float exposure = max(ubo.renderParams.x, 0.05);
+    color *= exposure;
+
+    // 6. Tone Mapping
+    int toneMode = ubo.renderModes.z; // 0: ACES Filmic, 1: Reinhard, 2: Neutral, 3: AgX
+    if (toneMode == 0) {
+        color = ACESFilm(color);
+    } else if (toneMode == 1) {
+        color = color / (color + vec3(1.0));
+    } else if (toneMode == 2) {
+        color = clamp(color, 0.0, 1.0);
+    } else if (toneMode == 3) {
+        color = clamp(color * (color * 0.35 + 0.65), 0.0, 1.0);
+    }
+
+    // 7. Display Gamma Correction
+    float gamma = max(ubo.renderParams.y, 0.1);
+    color = pow(color, vec3(1.0 / gamma));
+
+    // 8. Custom Shader Volume Trigger Processing
+    if (ubo.shaderVolume.x == 1) {
+        int effect = ubo.shaderVolume.y;
+        float intensity = clamp(ubo.shaderParams.x, 0.0, 2.0);
+
+        if (effect == 1) {
+            // Vignette
+            vec2 screenUV = gl_FragCoord.xy / vec2(1280.0, 720.0);
+            vec2 coord = (screenUV - 0.5) * 2.0;
+            float dist = length(coord);
+            float vig = smoothstep(0.95, 0.25, dist);
+            color = mix(color, color * vig, intensity);
+        } else if (effect == 2) {
+            // NightVision
+            float lum = dot(color, vec3(0.299, 0.587, 0.114));
+            vec3 nv = vec3(0.1, 0.95, 0.2) * (lum * 1.8 + 0.15);
+            float scanline = sin(gl_FragCoord.y * 1.2) * 0.06;
+            vec3 targetNV = clamp(nv + scanline, 0.0, 1.0);
+            color = mix(color, targetNV, intensity);
+        } else if (effect == 3) {
+            // Grayscale
+            float gray = dot(color, vec3(0.299, 0.587, 0.114));
+            color = mix(color, vec3(gray), intensity);
+        } else if (effect == 4) {
+            // Sepia
+            vec3 sepia;
+            sepia.r = dot(color, vec3(0.393, 0.769, 0.189));
+            sepia.g = dot(color, vec3(0.349, 0.686, 0.168));
+            sepia.b = dot(color, vec3(0.272, 0.534, 0.131));
+            color = mix(color, clamp(sepia, 0.0, 1.0), intensity);
+        } else if (effect == 5) {
+            // Invert
+            vec3 inv = vec3(1.0) - color;
+            color = mix(color, inv, intensity);
+        } else if (effect == 6) {
+            // Custom / Cyberpunk Tint
+            vec3 tinted = color * vec3(0.35, 0.85, 1.3);
+            color = mix(color, tinted, intensity);
+        }
+    }
 
     outColor = vec4(color, fragBaseColor.a);
 }

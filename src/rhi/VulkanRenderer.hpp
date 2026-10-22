@@ -32,8 +32,10 @@ namespace Engine {
         glm::vec4 DirLightDirAndEnabled{0.0f};
         glm::vec4 DirLightColorAndIntensity{1.0f};
         PointLightData PointLights[4];
-        int32 PointLightCount{0};
-        int32 Pad[3]{0, 0, 0};
+        glm::ivec4 RenderModes{0, 0, 0, 1};              // x: PointLightCount, y: LightingModel, z: ToneMappingMode, w: AntiAliasingMode
+        glm::vec4 RenderParams{1.0f, 2.2f, 0.6f, 0.4f};  // x: Exposure, y: Gamma, z: AOStrength, w: BloomIntensity
+        glm::ivec4 ShaderVolume{0, 1, 0, 0};             // x: bActive, y: EffectType, z: 0, w: 0
+        glm::vec4 ShaderParams{1.0f, 0.85f, 0.25f, 0.0f};// x: Intensity, y: Param1, z: Param2, w: Param3
     };
 
     /**
@@ -141,6 +143,7 @@ namespace Engine {
 
         std::unique_ptr<VulkanBuffer> m_SceneUBO;
         std::unordered_map<PrimitiveType, GPUMesh> m_PrimitiveMeshes;
+        std::unordered_map<std::string, GPUMesh> m_CustomMeshes;
     };
 
 } // namespace Engine

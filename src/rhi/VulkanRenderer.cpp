@@ -4,8 +4,10 @@
  */
 
 #include "VulkanRenderer.hpp"
+#include "RenderSettings.hpp"
 #include "scene/StaticMeshComponent.hpp"
 #include "scene/LightComponent.hpp"
+#include "scene/ShaderComponent.hpp"
 #include "core/Log.hpp"
 #include <backends/imgui_impl_vulkan.h>
 #include <fstream>
@@ -549,15 +551,46 @@ namespace Engine {
             return;
         }
 
-        // 1. Update Scene UBO with Camera & Dynamic Lights
+        // 1. Read global RenderSettings
+        RenderSettings& rs = RenderSettings::Get();
+
+        // 2. Update Scene UBO with Camera, Lights, Graphics Settings & Active Shader Volume
         SceneUBO ubo{};
         ubo.View = camera.GetViewMatrix();
         ubo.Proj = camera.GetProjectionMatrix();
         ubo.CameraPos = glm::vec4(camera.GetPosition(), 1.0f);
         ubo.DirLightDirAndEnabled = glm::vec4(0.0f);
         ubo.DirLightColorAndIntensity = glm::vec4(1.0f);
-        ubo.PointLightCount = 0;
 
+        // Graphics and post-processing quality settings
+        ubo.RenderModes.x = 0; // Point light count
+        ubo.RenderModes.y = static_cast<int32>(rs.Lighting);
+        ubo.RenderModes.z = static_cast<int32>(rs.ToneMapping);
+        ubo.RenderModes.w = static_cast<int32>(rs.AAMode);
+
+        ubo.RenderParams.x = rs.Exposure;
+        ubo.RenderParams.y = rs.Gamma;
+        ubo.RenderParams.z = rs.bEnableAmbientOcclusion ? rs.AmbientOcclusionStrength : 0.0f;
+        ubo.RenderParams.w = rs.bEnableBloom ? rs.BloomIntensity : 0.0f;
+
+        // Check for active Shader Volume Actor (Trigger Zone or activeEverywhere)
+        ubo.ShaderVolume = glm::ivec4(0, 1, 0, 0);
+        ubo.ShaderParams = glm::vec4(1.0f, 0.85f, 0.25f, 0.0f);
+
+        if (rs.bPostProcessShadersEnabled) {
+            for (const auto& actor : scene.GetActors()) {
+                if (auto sc = actor->GetComponent<ShaderComponent>()) {
+                    if (sc->IsActiveAtPosition(camera.GetPosition(), actor->Transform.Position)) {
+                        ubo.ShaderVolume.x = 1; // Active!
+                        ubo.ShaderVolume.y = static_cast<int32>(sc->GetResolvedEffectType());
+                        ubo.ShaderParams.x = sc->EffectIntensity;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Collect dynamic lights
         int pointIndex = 0;
         for (const auto& actor : scene.GetActors()) {
             if (!actor->bIsVisible) continue;
@@ -573,11 +606,11 @@ namespace Engine {
                 }
             }
         }
-        ubo.PointLightCount = pointIndex;
+        ubo.RenderModes.x = pointIndex;
 
         m_SceneUBO->UploadData(&ubo, sizeof(SceneUBO));
 
-        // 2. Record Render Command Buffer
+        // 3. Record Render Command Buffer
         VkCommandBuffer cmd = m_Context.BeginSingleTimeCommands();
 
         VkRenderPassBeginInfo renderPassInfo{};
@@ -589,6 +622,20 @@ namespace Engine {
 
         std::array<VkClearValue, 2> clearValues{};
         clearValues[0].color = {{0.11f, 0.12f, 0.14f, 1.0f}}; // UE5 Slate dark viewport background
+
+        // Viewport atmospheric clear color reacts to active shader volume
+        if (ubo.ShaderVolume.x == 1) {
+            int effect = ubo.ShaderVolume.y;
+            if (effect == 2) { // NightVision
+                clearValues[0].color = {{0.015f, 0.08f, 0.025f, 1.0f}};
+            } else if (effect == 3) { // Grayscale
+                clearValues[0].color = {{0.12f, 0.12f, 0.12f, 1.0f}};
+            } else if (effect == 4) { // Sepia
+                clearValues[0].color = {{0.16f, 0.13f, 0.09f, 1.0f}};
+            } else if (effect == 5) { // Invert
+                clearValues[0].color = {{0.88f, 0.87f, 0.85f, 1.0f}};
+            }
+        }
         clearValues[1].depthStencil = {1.0f, 0};
         renderPassInfo.clearValueCount = static_cast<uint32>(clearValues.size());
         renderPassInfo.pClearValues = clearValues.data();
@@ -612,17 +659,51 @@ namespace Engine {
 
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
 
-        // Render each mesh actor in scene
+        // Render each mesh actor in scene (primitives & custom 3D OBJ meshes)
         for (const auto& actor : scene.GetActors()) {
             if (!actor->bIsVisible) continue;
 
             auto meshComp = actor->GetComponent<StaticMeshComponent>();
             if (!meshComp) continue;
 
-            auto it = m_PrimitiveMeshes.find(meshComp->MeshType);
-            if (it == m_PrimitiveMeshes.end()) continue;
+            const GPUMesh* targetMesh = nullptr;
 
-            const GPUMesh& gpuMesh = it->second;
+            if (meshComp->MeshType == PrimitiveType::Custom) {
+                if (!meshComp->ModelPath.empty()) {
+                    auto it = m_CustomMeshes.find(meshComp->ModelPath);
+                    if (it != m_CustomMeshes.end()) {
+                        targetMesh = &it->second;
+                    } else {
+                        MeshGeometry geo = meshComp->GetGeometry();
+                        if (!geo.Vertices.empty()) {
+                            auto& gm = m_CustomMeshes[meshComp->ModelPath];
+                            gm.IndexCount = static_cast<uint32>(geo.Indices.size());
+                            gm.VertexBuffer = std::make_unique<VulkanBuffer>(
+                                m_Context, sizeof(Vertex) * geo.Vertices.size(),
+                                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                            );
+                            gm.VertexBuffer->UploadData(geo.Vertices.data(), sizeof(Vertex) * geo.Vertices.size());
+                            gm.IndexBuffer = std::make_unique<VulkanBuffer>(
+                                m_Context, sizeof(uint32) * geo.Indices.size(),
+                                VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                            );
+                            gm.IndexBuffer->UploadData(geo.Indices.data(), sizeof(uint32) * geo.Indices.size());
+                            targetMesh = &gm;
+                        }
+                    }
+                }
+            } else {
+                auto it = m_PrimitiveMeshes.find(meshComp->MeshType);
+                if (it != m_PrimitiveMeshes.end()) {
+                    targetMesh = &it->second;
+                }
+            }
+
+            if (!targetMesh) continue;
+
+            const GPUMesh& gpuMesh = *targetMesh;
 
             MeshPushConstants pc;
             pc.Model = actor->Transform.GetMatrix();
