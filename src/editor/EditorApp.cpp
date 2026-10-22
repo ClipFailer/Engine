@@ -114,6 +114,11 @@ namespace Engine {
         m_ProjectHubWindow = std::make_unique<ProjectHubWindow>();
 
         // Wire selection, double-click, and code editor callbacks
+        m_Scene->OnActorsCleared = [this]() {
+            if (m_OutlinerPanel) m_OutlinerPanel->SetSelectedActor(nullptr);
+            if (m_ActorDetailWindow) m_ActorDetailWindow->Close();
+        };
+
         m_ViewportPanel->OnActorSelected = [this](Actor* a) {
             m_OutlinerPanel->SetSelectedActor(a);
         };
@@ -125,6 +130,9 @@ namespace Engine {
         };
         m_ContentBrowserPanel->OnFileDoubleClicked = [this](const std::filesystem::path& path) {
             m_CodeEditorWindow->OpenFile(path);
+        };
+        m_ContentBrowserPanel->OnOpenScene = [this](const std::filesystem::path& path) {
+            OpenScene(path);
         };
         m_ContentBrowserPanel->OnSpawnActorFromClass = [this](const std::string& className) {
             for (const auto& a : m_Scene->GetActors()) {
@@ -415,7 +423,7 @@ namespace Engine {
         m_ContentBrowserPanel->Render(*m_Scene);
         m_ConsolePanel->Render();
 
-        m_ActorDetailWindow->Render();
+        m_ActorDetailWindow->Render(*m_Scene);
         m_CodeEditorWindow->Render();
         m_UIDesignerWindow->Render(m_OutlinerPanel->GetSelectedActor());
         m_SettingsDialogs->Render(*m_Project, *m_PhysicsWorld);
@@ -603,6 +611,7 @@ namespace Engine {
         }
 
         if (m_OutlinerPanel) m_OutlinerPanel->SetSelectedActor(nullptr);
+        if (m_ActorDetailWindow) m_ActorDetailWindow->Close();
 
         m_Project = std::make_unique<Project>(projectFilePath);
         m_ContentBrowserPanel->SetProject(*m_Project);
@@ -617,6 +626,20 @@ namespace Engine {
         }
 
         LOG_INFO("Opened project: {}", projectFilePath.string());
+    }
+
+    void EditorApp::OpenScene(const std::filesystem::path& sceneFilePath) {
+        if (!std::filesystem::exists(sceneFilePath)) {
+            LOG_WARN("Scene file does not exist: {}", sceneFilePath.string());
+            return;
+        }
+
+        if (m_OutlinerPanel) m_OutlinerPanel->SetSelectedActor(nullptr);
+        if (m_ActorDetailWindow) m_ActorDetailWindow->Close();
+
+        if (m_Scene) {
+            m_Scene->LoadFromFile(sceneFilePath.string());
+        }
     }
 
 } // namespace Engine

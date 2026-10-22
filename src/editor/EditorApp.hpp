@@ -56,6 +56,12 @@ namespace Engine {
          */
         void OpenProject(const std::filesystem::path& projectFilePath, bool bEmptyScene = false);
 
+        /**
+         * @brief Opens and deserializes a scene file (.json).
+         * @param sceneFilePath Path to scene asset file.
+         */
+        void OpenScene(const std::filesystem::path& sceneFilePath);
+
     private:
         void InitImGui();
         void ShutdownImGui();

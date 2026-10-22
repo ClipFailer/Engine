@@ -34,6 +34,7 @@ namespace Engine {
         void Render(Scene& scene);
 
         std::function<void(const std::filesystem::path&)> OnFileDoubleClicked;
+        std::function<void(const std::filesystem::path&)> OnOpenScene;
         std::function<void(const std::string&)> OnSpawnActorFromClass;
         std::function<void(const std::string&)> OnActorAssetDoubleClicked;
         std::function<void(const std::filesystem::path&)> OnUIDoubleClicked;

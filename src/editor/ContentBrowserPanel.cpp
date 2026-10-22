@@ -332,11 +332,13 @@ namespace Engine {
                 bool isCppOrHeader = (ext == ".cpp" || ext == ".hpp" || ext == ".h");
                 bool isActorAsset = (ext == ".actor");
                 bool isUIWidget = (ext == ".ui" || ext == ".uwidget");
+                bool isScene = (ext == ".json" || ext == ".scene");
 
                 ImVec4 btnColor = isDir ? ImVec4(0.22f, 0.35f, 0.48f, 1.0f) :
                                   isActorAsset ? ImVec4(0.2f, 0.45f, 0.8f, 1.0f) :
                                   isUIWidget ? ImVec4(0.18f, 0.52f, 0.50f, 1.0f) :
                                   isCppOrHeader ? ImVec4(0.25f, 0.40f, 0.25f, 1.0f) :
+                                  isScene ? ImVec4(0.7f, 0.45f, 0.15f, 1.0f) :
                                   ImVec4(0.18f, 0.18f, 0.22f, 1.0f);
 
                 const char* iconLabel = isDir ? "[DIR]" :
@@ -344,7 +346,7 @@ namespace Engine {
                                         isUIWidget ? "[UI]" :
                                         (ext == ".cpp") ? "[CPP]" :
                                         (ext == ".hpp" || ext == ".h") ? "[HPP]" :
-                                        (ext == ".json") ? "[SCENE]" : "[FILE]";
+                                        isScene ? "[SCENE]" : "[FILE]";
 
                 ImGui::PushStyleColor(ImGuiCol_Button, btnColor);
                 if (ImGui::Button(iconLabel, ImVec2(76.0f, 52.0f))) {
@@ -353,8 +355,6 @@ namespace Engine {
                         ImGui::PopStyleColor();
                         ImGui::PopID();
                         break;
-                    } else if (ext == ".json") {
-                        scene.LoadFromFile(entry.path().string());
                     }
                 }
                 ImGui::PopStyleColor();
@@ -372,6 +372,10 @@ namespace Engine {
                     } else if (isUIWidget) {
                         if (OnUIDoubleClicked) {
                             OnUIDoubleClicked(entry.path());
+                        }
+                    } else if (isScene) {
+                        if (OnOpenScene) {
+                            OnOpenScene(entry.path());
                         }
                     } else if (isCppOrHeader) {
                         // Double-click opens internally in CodeEditorWindow
@@ -461,6 +465,13 @@ namespace Engine {
                     } else if (isUIWidget) {
                         if (ImGui::MenuItem("Open in UI Designer")) {
                             if (OnUIDoubleClicked) OnUIDoubleClicked(entry.path());
+                        }
+                    } else if (isScene) {
+                        if (ImGui::MenuItem("Open Scene in Editor")) {
+                            if (OnOpenScene) OnOpenScene(entry.path());
+                        }
+                        if (ImGui::MenuItem("Open in Internal Code Editor")) {
+                            if (OnFileDoubleClicked) OnFileDoubleClicked(entry.path());
                         }
                     } else if (!isDir) {
                         if (ImGui::MenuItem("Open in VS Code")) {

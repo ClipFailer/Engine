@@ -4,6 +4,7 @@
  */
 
 #include "Scene.hpp"
+#include "Character.hpp"
 #include "StaticMeshComponent.hpp"
 #include "LightComponent.hpp"
 #include "RigidBodyComponent.hpp"
@@ -96,6 +97,7 @@ namespace Engine {
     }
 
     void Scene::SetupDefaultScene() {
+        if (OnActorsCleared) OnActorsCleared();
         m_Actors.clear();
 
         // 1. Directional Sun Light (lightweight entity: no mesh, no physics, no collision)
@@ -196,19 +198,60 @@ namespace Engine {
             json root;
             file >> root;
 
+            if (OnActorsCleared) OnActorsCleared();
             m_Actors.clear();
+
             if (root.contains("actors") && root["actors"].is_array()) {
                 for (const auto& a : root["actors"]) {
                     std::string name = a.value("name", "Actor");
-                    auto actor = SpawnActor(name);
-                    if (a.contains("pos")) {
+                    std::string className = a.value("class", "Actor");
+
+                    Actor* actor = nullptr;
+                    if (className == "Character") {
+                        actor = SpawnActor<Character>(name);
+                    } else if (className == "Directional Light" || name.find("Directional") != std::string::npos) {
+                        actor = SpawnLightActor(name, LightType::Directional);
+                    } else if (className == "Point Light" || name.find("Point") != std::string::npos) {
+                        actor = SpawnLightActor(name, LightType::Point);
+                    } else {
+                        actor = SpawnActor(name);
+                    }
+
+                    if (a.contains("pos") && a["pos"].is_array() && a["pos"].size() >= 3) {
                         actor->Transform.Position = {a["pos"][0], a["pos"][1], a["pos"][2]};
                     }
-                    if (a.contains("rot")) {
+                    if (a.contains("rot") && a["rot"].is_array() && a["rot"].size() >= 3) {
                         actor->Transform.Rotation = {a["rot"][0], a["rot"][1], a["rot"][2]};
                     }
-                    if (a.contains("scale")) {
+                    if (a.contains("scale") && a["scale"].is_array() && a["scale"].size() >= 3) {
                         actor->Transform.Scale = {a["scale"][0], a["scale"][1], a["scale"][2]};
+                    }
+
+                    // Restore serialized component properties if present
+                    if (a.contains("components") && a["components"].is_array()) {
+                        for (const auto& c : a["components"]) {
+                            std::string compClass = c.value("class", "");
+                            if (compClass == "StaticMeshComponent") {
+                                auto mesh = actor->GetComponent<StaticMeshComponent>();
+                                if (!mesh) mesh = actor->AddComponent<StaticMeshComponent>();
+                                if (c.contains("mesh_type")) {
+                                    mesh->MeshType = static_cast<PrimitiveType>(c["mesh_type"].get<uint8>());
+                                }
+                                if (c.contains("color") && c["color"].size() >= 4) {
+                                    mesh->BaseColor = {c["color"][0], c["color"][1], c["color"][2], c["color"][3]};
+                                }
+                                if (c.contains("metallic")) mesh->Metallic = c["metallic"];
+                                if (c.contains("roughness")) mesh->Roughness = c["roughness"];
+                            } else if (compClass == "RigidBodyComponent") {
+                                auto rb = actor->GetComponent<RigidBodyComponent>();
+                                if (!rb) rb = actor->AddComponent<RigidBodyComponent>();
+                                if (c.contains("mass")) rb->Mass = c["mass"];
+                                if (c.contains("gravity")) rb->bUseGravity = c["gravity"];
+                                if (c.contains("static")) rb->bIsStatic = c["static"];
+                                if (c.contains("restitution")) rb->Restitution = c["restitution"];
+                                if (c.contains("friction")) rb->Friction = c["friction"];
+                            }
+                        }
                     }
                 }
             }

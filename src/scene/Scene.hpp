@@ -59,7 +59,12 @@ namespace Engine {
         /**
          * @brief Clears all actors from the level creating an empty scene.
          */
-        void ClearAllActors() { m_Actors.clear(); }
+        void ClearAllActors() {
+            if (OnActorsCleared) OnActorsCleared();
+            m_Actors.clear();
+        }
+
+        std::function<void()> OnActorsCleared;
 
         /**
          * @brief Destroys and removes an actor from the scene.

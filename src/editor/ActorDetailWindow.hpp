@@ -10,6 +10,8 @@
 
 namespace Engine {
 
+    class Scene;
+
     /**
      * @class ActorDetailWindow
      * @brief Dedicated full-screen inspector window opened via double-click on an Actor in Outliner or Viewport,
@@ -30,11 +32,15 @@ namespace Engine {
 
         /**
          * @brief Renders the Actor detail window.
+         * @param scene Active scene to validate actor existence.
          */
-        void Render();
+        void Render(const Scene& scene);
 
         [[nodiscard]] bool IsOpen() const noexcept { return m_bIsOpen; }
-        void Close() noexcept { m_bIsOpen = false; }
+        void Close() noexcept {
+            m_TargetActor = nullptr;
+            m_bIsOpen = false;
+        }
         [[nodiscard]] Actor* GetTargetActor() const noexcept { return m_TargetActor; }
 
     private:

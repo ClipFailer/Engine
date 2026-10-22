@@ -15,6 +15,20 @@ namespace Engine {
     void OutlinerPanel::Render(Scene& scene) {
         ImGui::Begin("Outliner");
 
+        // Validate that m_SelectedActor still exists in the active scene
+        if (m_SelectedActor) {
+            bool bFound = false;
+            for (const auto& a : scene.GetActors()) {
+                if (a.get() == m_SelectedActor) {
+                    bFound = true;
+                    break;
+                }
+            }
+            if (!bFound) {
+                m_SelectedActor = nullptr;
+            }
+        }
+
         // Search Bar
         ImGui::InputTextWithHint("##Filter", "Search Actors...", m_SearchFilter, sizeof(m_SearchFilter));
         ImGui::Separator();

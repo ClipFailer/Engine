@@ -4,6 +4,7 @@
  */
 
 #include "ActorDetailWindow.hpp"
+#include "scene/Scene.hpp"
 #include "scene/StaticMeshComponent.hpp"
 #include "scene/CollisionComponent.hpp"
 #include "scene/PhysicsComponent.hpp"
@@ -17,8 +18,22 @@
 
 namespace Engine {
 
-    void ActorDetailWindow::Render() {
+    void ActorDetailWindow::Render(const Scene& scene) {
         if (!m_bIsOpen || !m_TargetActor) return;
+
+        // Verify that target actor still exists in scene
+        bool bFound = false;
+        for (const auto& a : scene.GetActors()) {
+            if (a.get() == m_TargetActor) {
+                bFound = true;
+                break;
+            }
+        }
+        if (!bFound) {
+            m_TargetActor = nullptr;
+            m_bIsOpen = false;
+            return;
+        }
 
         const ImGuiViewport* vp = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(vp->WorkPos);
