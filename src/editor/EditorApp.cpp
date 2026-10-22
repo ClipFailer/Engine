@@ -27,6 +27,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <commdlg.h>
 #endif
 
 namespace Engine {
@@ -269,6 +270,11 @@ namespace Engine {
     }
 
     void EditorApp::Shutdown() {
+        // Auto-save active scene before engine shutdown
+        if (m_Scene && !m_CurrentScenePath.empty()) {
+            SaveCurrentScene();
+        }
+
         VkDevice device = m_VulkanContext.GetDevice();
         if (device != VK_NULL_HANDLE) {
             vkDeviceWaitIdle(device);
@@ -337,6 +343,14 @@ namespace Engine {
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
             ImGuizmo::BeginFrame();
+
+            // Global Ctrl+S shortcut to save active level scene
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false) &&
+                (!m_CodeEditorWindow || !m_CodeEditorWindow->IsOpen()) &&
+                (!m_UIDesignerWindow || !m_UIDesignerWindow->IsOpen())) {
+                SaveCurrentScene();
+            }
 
             RenderUI();
 
@@ -442,9 +456,27 @@ namespace Engine {
                 if (ImGui::MenuItem("New Project...")) {
                     m_bShowNewProjectModal = true;
                 }
-                if (ImGui::MenuItem("Save Scene")) {
-                    m_Scene->SaveToFile("DefaultScene.json");
+                ImGui::Separator();
+                if (ImGui::MenuItem("Save Scene", "Ctrl+S")) {
+                    SaveCurrentScene();
                 }
+                if (ImGui::MenuItem("Save Scene As...")) {
+#if defined(_WIN32)
+                    char szFile[MAX_PATH] = "";
+                    OPENFILENAMEA ofn{};
+                    ofn.lStructSize = sizeof(ofn);
+                    ofn.lpstrFile = szFile;
+                    ofn.nMaxFile = sizeof(szFile);
+                    ofn.lpstrFilter = "Engine Scene (*.json)\0*.json\0All Files (*.*)\0*.*\0";
+                    ofn.nFilterIndex = 1;
+                    ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
+
+                    if (GetSaveFileNameA(&ofn)) {
+                        SaveCurrentScene(szFile);
+                    }
+#endif
+                }
+                ImGui::Separator();
                 if (ImGui::MenuItem("Exit")) {
                     m_bIsRunning = false;
                 }
@@ -620,9 +652,30 @@ namespace Engine {
             m_ProjectHubWindow->AddRecentProject(m_Project->GetConfig().Name, projectFilePath.string());
         }
 
+        std::filesystem::path projectDir = projectFilePath.parent_path();
+        std::filesystem::path startScene = projectDir / m_Project->GetConfig().StartScene;
+        if (!std::filesystem::exists(startScene)) {
+            std::filesystem::path altScene = projectDir / "Content" / "Scenes" / "Scene.json";
+            if (std::filesystem::exists(altScene)) {
+                startScene = altScene;
+            }
+        }
+        m_CurrentScenePath = startScene;
+
         if (bEmptyScene) {
             m_Scene->ClearAllActors();
-            LOG_INFO("Created clean empty scene for project '{}'", m_Project->GetConfig().Name);
+            std::filesystem::create_directories(m_CurrentScenePath.parent_path());
+            m_Scene->SaveToFile(m_CurrentScenePath.string());
+            LOG_INFO("Created clean empty scene for project '{}' at {}", m_Project->GetConfig().Name, m_CurrentScenePath.string());
+        } else {
+            if (std::filesystem::exists(m_CurrentScenePath)) {
+                m_Scene->LoadFromFile(m_CurrentScenePath.string());
+                LOG_INFO("Loaded project start scene: {}", m_CurrentScenePath.string());
+            } else {
+                std::filesystem::create_directories(m_CurrentScenePath.parent_path());
+                m_Scene->SaveToFile(m_CurrentScenePath.string());
+                LOG_INFO("Initialized start scene file at {}", m_CurrentScenePath.string());
+            }
         }
 
         LOG_INFO("Opened project: {}", projectFilePath.string());
@@ -637,8 +690,31 @@ namespace Engine {
         if (m_OutlinerPanel) m_OutlinerPanel->SetSelectedActor(nullptr);
         if (m_ActorDetailWindow) m_ActorDetailWindow->Close();
 
+        m_CurrentScenePath = sceneFilePath;
         if (m_Scene) {
             m_Scene->LoadFromFile(sceneFilePath.string());
+        }
+        LOG_INFO("Active level scene loaded from {}", sceneFilePath.string());
+    }
+
+    void EditorApp::SaveCurrentScene(const std::filesystem::path& destination) {
+        std::filesystem::path savePath = destination;
+        if (savePath.empty()) {
+            savePath = m_CurrentScenePath;
+        }
+        if (savePath.empty()) {
+            if (m_Project) {
+                savePath = m_Project->GetProjectPath().parent_path() / m_Project->GetConfig().StartScene;
+            } else {
+                savePath = "DefaultScene.json";
+            }
+        }
+
+        m_CurrentScenePath = savePath;
+        std::filesystem::create_directories(savePath.parent_path());
+        if (m_Scene) {
+            m_Scene->SaveToFile(savePath.string());
+            LOG_INFO("Saved current scene: {} ({} actors)", savePath.string(), m_Scene->GetActors().size());
         }
     }
 

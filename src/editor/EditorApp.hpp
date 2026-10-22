@@ -62,6 +62,12 @@ namespace Engine {
          */
         void OpenScene(const std::filesystem::path& sceneFilePath);
 
+        /**
+         * @brief Saves active level actors and coordinates to current scene file.
+         * @param destination Optional target filepath override (or saves to m_CurrentScenePath).
+         */
+        void SaveCurrentScene(const std::filesystem::path& destination = "");
+
     private:
         void InitImGui();
         void ShutdownImGui();
@@ -79,6 +85,7 @@ namespace Engine {
         std::unique_ptr<Scene> m_Scene;
         std::unique_ptr<Camera> m_Camera;
         std::unique_ptr<Project> m_Project;
+        std::filesystem::path m_CurrentScenePath;
 
         std::unique_ptr<ViewportPanel> m_ViewportPanel;
         std::unique_ptr<OutlinerPanel> m_OutlinerPanel;

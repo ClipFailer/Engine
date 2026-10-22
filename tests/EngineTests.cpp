@@ -13,6 +13,7 @@
 #include "scene/Actor.hpp"
 #include "scene/PositionComponent.hpp"
 #include "scene/StaticMeshComponent.hpp"
+#include "scene/RigidBodyComponent.hpp"
 #include "scene/PhysicsComponent.hpp"
 #include "scene/CollisionComponent.hpp"
 #include "scene/MovementComponent.hpp"
@@ -318,6 +319,93 @@ namespace EngineTests {
         return true;
     }
 
+    bool TestSceneSerializationAndCoordinates() {
+        std::filesystem::path testScenePath = std::filesystem::temp_directory_path() / "engine_scene_coords_test.json";
+
+        // 1. Setup Scene with Actors at specific coordinates
+        {
+            Engine::Scene scene;
+            scene.ClearAllActors();
+
+            auto chr = scene.SpawnActor<Engine::Character>("PlayerHero");
+            chr->Transform.Position = glm::vec3(12.5f, 3.2f, -7.8f);
+            chr->Transform.Rotation = glm::vec3(0.0f, 90.0f, 0.0f);
+            chr->Transform.Scale = glm::vec3(1.2f);
+            chr->WalkSpeed = 8.5f;
+
+            auto cube = scene.SpawnActor("PhysicsCube");
+            cube->Transform.Position = glm::vec3(-4.0f, 6.0f, 2.0f);
+            auto mesh = cube->GetComponent<Engine::StaticMeshComponent>();
+            if (mesh) {
+                mesh->MeshType = Engine::PrimitiveType::Cube;
+                mesh->BaseColor = glm::vec4(1.0f, 0.5f, 0.2f, 1.0f);
+            }
+            auto rb = cube->AddComponent<Engine::RigidBodyComponent>();
+            rb->Mass = 5.0f;
+
+            auto sun = scene.SpawnLightActor("SunLight", Engine::LightType::Directional);
+            sun->Transform.Position = glm::vec3(0.0f, 20.0f, 0.0f);
+            if (auto light = sun->GetComponent<Engine::LightComponent>()) {
+                light->Intensity = 3.5f;
+            }
+
+            TEST_ASSERT(scene.GetActors().size() == 3, "Setup scene must have 3 actors");
+            TEST_ASSERT(scene.SaveToFile(testScenePath.string()), "SaveToFile failed");
+        }
+
+        // 2. Load Scene back and verify all coordinates and properties persist
+        {
+            Engine::Scene loadedScene;
+            TEST_ASSERT(loadedScene.LoadFromFile(testScenePath.string()), "LoadFromFile failed");
+            TEST_ASSERT(loadedScene.GetActors().size() == 3, "Loaded scene must have 3 actors");
+
+            Engine::Actor* foundHero = nullptr;
+            Engine::Actor* foundCube = nullptr;
+            Engine::Actor* foundSun = nullptr;
+
+            for (const auto& a : loadedScene.GetActors()) {
+                if (a->GetName() == "PlayerHero") foundHero = a.get();
+                else if (a->GetName() == "PhysicsCube") foundCube = a.get();
+                else if (a->GetName() == "SunLight") foundSun = a.get();
+            }
+
+            TEST_ASSERT(foundHero != nullptr, "Hero actor was not restored");
+            TEST_ASSERT(foundCube != nullptr, "Cube actor was not restored");
+            TEST_ASSERT(foundSun != nullptr, "Sun light actor was not restored");
+
+            // Verify Coordinates
+            TEST_ASSERT(std::abs(foundHero->Transform.Position.x - 12.5f) < 0.001f, "Hero X coordinate mismatch");
+            TEST_ASSERT(std::abs(foundHero->Transform.Position.y - 3.2f) < 0.001f, "Hero Y coordinate mismatch");
+            TEST_ASSERT(std::abs(foundHero->Transform.Position.z - (-7.8f)) < 0.001f, "Hero Z coordinate mismatch");
+            TEST_ASSERT(std::abs(foundHero->Transform.Scale.x - 1.2f) < 0.001f, "Hero Scale mismatch");
+
+            auto chr = dynamic_cast<Engine::Character*>(foundHero);
+            TEST_ASSERT(chr != nullptr, "Hero actor is not Character type");
+            TEST_ASSERT(std::abs(chr->WalkSpeed - 8.5f) < 0.001f, "Hero WalkSpeed mismatch");
+
+            // Verify Cube
+            TEST_ASSERT(std::abs(foundCube->Transform.Position.x - (-4.0f)) < 0.001f, "Cube X coordinate mismatch");
+            TEST_ASSERT(std::abs(foundCube->Transform.Position.y - 6.0f) < 0.001f, "Cube Y coordinate mismatch");
+            TEST_ASSERT(std::abs(foundCube->Transform.Position.z - 2.0f) < 0.001f, "Cube Z coordinate mismatch");
+
+            auto cubeMesh = foundCube->GetComponent<Engine::StaticMeshComponent>();
+            TEST_ASSERT(cubeMesh != nullptr, "Cube missing StaticMeshComponent");
+            TEST_ASSERT(std::abs(cubeMesh->BaseColor.r - 1.0f) < 0.001f, "Cube color R mismatch");
+
+            auto cubeRb = foundCube->GetComponent<Engine::RigidBodyComponent>();
+            TEST_ASSERT(cubeRb != nullptr, "Cube missing RigidBodyComponent");
+            TEST_ASSERT(std::abs(cubeRb->Mass - 5.0f) < 0.001f, "Cube mass mismatch");
+
+            // Verify Light
+            auto lightComp = foundSun->GetComponent<Engine::LightComponent>();
+            TEST_ASSERT(lightComp != nullptr, "Sun missing LightComponent");
+            TEST_ASSERT(std::abs(lightComp->Intensity - 3.5f) < 0.001f, "Sun intensity mismatch");
+        }
+
+        std::filesystem::remove(testScenePath);
+        return true;
+    }
+
 } // namespace EngineTests
 
 int main() {
@@ -326,7 +414,7 @@ int main() {
     std::cout << "========================================\n";
 
     int passed = 0;
-    int total = 11;
+    int total = 12;
 
     auto runTest = [&](const char* name, bool(*func)()) {
         std::cout << "[RUNNING] " << name << "... ";
@@ -349,6 +437,7 @@ int main() {
     runTest("Procedural Geometry Primitives", EngineTests::TestPrimitives);
     runTest("Project Scaffolding & Dynamic Class Generator", EngineTests::TestProjectScaffolding);
     runTest("Character Locomotion, UI & Custom Components", EngineTests::TestCharacterAndUIComponents);
+    runTest("Scene Persistence, Coordinates & Component State", EngineTests::TestSceneSerializationAndCoordinates);
 
     std::cout << "========================================\n";
     std::cout << "Tests Passed: " << passed << " / " << total << "\n";
