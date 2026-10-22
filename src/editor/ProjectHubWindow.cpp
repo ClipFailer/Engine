@@ -72,11 +72,12 @@ namespace Engine {
     }
 
     void ProjectHubWindow::AddRecentProject(const std::string& name, const std::string& path) {
-        // Remove duplicate
-        for (auto it = m_RecentProjects.begin(); it != m_RecentProjects.end(); ++it) {
+        // Remove duplicate safely
+        for (auto it = m_RecentProjects.begin(); it != m_RecentProjects.end(); ) {
             if (it->Path == path) {
-                m_RecentProjects.erase(it);
-                break;
+                it = m_RecentProjects.erase(it);
+            } else {
+                ++it;
             }
         }
 
@@ -135,9 +136,10 @@ namespace Engine {
                 ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
                 if (GetOpenFileNameA(&ofn)) {
+                    std::string chosen = szFile;
+                    m_bIsOpen = false;
                     if (OnOpenProject) {
-                        OnOpenProject(szFile);
-                        m_bIsOpen = false;
+                        OnOpenProject(chosen);
                     }
                 }
 #endif
@@ -155,6 +157,9 @@ namespace Engine {
                     ImGui::TextDisabled("No recent projects found. Click 'Create New Project' to start!");
                 } else {
                     ImGui::BeginChild("RecentList", ImVec2(0, 0), false);
+                    std::string projectToOpen;
+                    bool shouldOpen = false;
+
                     for (const auto& proj : m_RecentProjects) {
                         ImGui::PushID(proj.Path.c_str());
 
@@ -163,10 +168,8 @@ namespace Engine {
 
                         std::string label = proj.Name + " (" + proj.LastOpened + ")\n" + proj.Path;
                         if (ImGui::Button(label.c_str(), ImVec2(-1, 48.0f))) {
-                            if (OnOpenProject) {
-                                OnOpenProject(proj.Path);
-                                m_bIsOpen = false;
-                            }
+                            projectToOpen = proj.Path;
+                            shouldOpen = true;
                         }
                         ImGui::PopStyleColor(2);
 
@@ -174,6 +177,13 @@ namespace Engine {
                         ImGui::Spacing();
                     }
                     ImGui::EndChild();
+
+                    if (shouldOpen) {
+                        m_bIsOpen = false;
+                        if (OnOpenProject) {
+                            OnOpenProject(projectToOpen);
+                        }
+                    }
                 }
             } else {
                 // New Project Wizard
@@ -200,9 +210,12 @@ namespace Engine {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.55f, 0.35f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.18f, 0.68f, 0.42f, 1.0f));
                 if (ImGui::Button("Create Project", ImVec2(180, 36.0f))) {
+                    std::string projPath = m_NewProjectPath;
+                    std::string projName = m_NewProjectName;
+                    bool emptyScene = m_bEmptyScene;
+                    m_bIsOpen = false;
                     if (OnCreateProject) {
-                        OnCreateProject(m_NewProjectPath, m_NewProjectName, m_bEmptyScene);
-                        m_bIsOpen = false;
+                        OnCreateProject(projPath, projName, emptyScene);
                     }
                 }
                 ImGui::PopStyleColor(2);

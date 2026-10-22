@@ -597,7 +597,12 @@ namespace Engine {
     }
 
     void EditorApp::OpenProject(const std::filesystem::path& projectFilePath, bool bEmptyScene) {
-        if (!std::filesystem::exists(projectFilePath)) return;
+        if (!std::filesystem::exists(projectFilePath)) {
+            LOG_WARN("Project file does not exist: {}", projectFilePath.string());
+            return;
+        }
+
+        if (m_OutlinerPanel) m_OutlinerPanel->SetSelectedActor(nullptr);
 
         m_Project = std::make_unique<Project>(projectFilePath);
         m_ContentBrowserPanel->SetProject(*m_Project);
