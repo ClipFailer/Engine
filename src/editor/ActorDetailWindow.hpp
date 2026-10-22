@@ -22,14 +22,11 @@ namespace Engine {
         ActorDetailWindow() = default;
 
         /**
-         * @brief Opens the window targeting a specific Actor.
+         * @brief Opens the window targeting a specific Actor and optional asset path.
          * @param actor Actor to inspect and edit.
+         * @param assetPath Explicit file path to .actor preset/blueprint.
          */
-        void Open(Actor* actor) {
-            m_TargetActor = actor;
-            m_bIsOpen = (actor != nullptr);
-            m_bJustOpened = true;
-        }
+        void Open(Actor* actor, const std::string& assetPath = "");
 
         /**
          * @brief Renders the Actor detail window.
@@ -38,19 +35,30 @@ namespace Engine {
         void Render(const Scene& scene);
 
         [[nodiscard]] bool IsOpen() const noexcept { return m_bIsOpen; }
-        void Close() noexcept {
-            m_TargetActor = nullptr;
-            m_bIsOpen = false;
-        }
+        void Close() noexcept;
         [[nodiscard]] Actor* GetTargetActor() const noexcept { return m_TargetActor; }
+
+        /**
+         * @brief Persists current actor properties and components to its associated .actor file.
+         * @return True if saved successfully.
+         */
+        bool SaveCurrentAsset();
+
+        void SetProjectContentPath(const std::filesystem::path& path) noexcept {
+            m_ProjectContentPath = path;
+        }
 
     private:
         void Draw3DPreview(ImVec2 canvasSize);
         void DrawInspectorPanel();
 
         Actor* m_TargetActor{nullptr};
+        std::string m_AssociatedAssetPath{};
+        std::filesystem::path m_ProjectContentPath{};
         bool m_bIsOpen{false};
         bool m_bJustOpened{false};
+        bool m_bDirty{false};
+        float m_SaveNotificationTimer{0.0f};
 
         // Orbit camera state for 3D inspection
         float m_CamYaw{35.0f};

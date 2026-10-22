@@ -124,13 +124,13 @@ namespace Engine {
             m_OutlinerPanel->SetSelectedActor(a);
         };
         m_ViewportPanel->OnActorDoubleClicked = [this](Actor* a) {
-            m_ActorDetailWindow->Open(a);
+            if (a) m_ActorDetailWindow->Open(a, a->AssetPath);
         };
         m_OutlinerPanel->OnActorDoubleClicked = [this](Actor* a) {
-            m_ActorDetailWindow->Open(a);
+            if (a) m_ActorDetailWindow->Open(a, a->AssetPath);
         };
         m_DetailsPanel->OnOpenActorDetail = [this](Actor* a) {
-            m_ActorDetailWindow->Open(a);
+            if (a) m_ActorDetailWindow->Open(a, a->AssetPath);
         };
         m_ContentBrowserPanel->OnFileDoubleClicked = [this](const std::filesystem::path& path) {
             m_CodeEditorWindow->OpenFile(path);
@@ -146,14 +146,36 @@ namespace Engine {
                 }
             }
         };
-        m_ContentBrowserPanel->OnActorAssetDoubleClicked = [this](const std::string& className) {
+        m_ContentBrowserPanel->OnSpawnActorFromAsset = [this](const std::string& assetPathStr) {
+            auto spawned = m_Scene->SpawnActorFromAsset(assetPathStr, glm::vec3(0.0f, 1.5f, 0.0f));
+            if (m_OutlinerPanel && spawned) {
+                m_OutlinerPanel->SetSelectedActor(spawned);
+            }
+        };
+        m_ContentBrowserPanel->OnActorAssetDoubleClicked = [this](const std::string& assetPathStr) {
+            std::filesystem::path assetPath(assetPathStr);
+            if (assetPath.extension() == ".actor" && std::filesystem::exists(assetPath)) {
+                // Find existing actor in scene or spawn from asset
+                for (const auto& a : m_Scene->GetActors()) {
+                    if (a->AssetPath == assetPath.string() || a->GetName() == assetPath.stem().string()) {
+                        a->AssetPath = assetPath.string();
+                        m_OutlinerPanel->SetSelectedActor(a.get());
+                        m_ActorDetailWindow->Open(a.get(), assetPath.string());
+                        return;
+                    }
+                }
+                auto spawned = m_Scene->SpawnActorFromAsset(assetPath, glm::vec3(0.0f, 1.5f, 0.0f));
+                m_OutlinerPanel->SetSelectedActor(spawned);
+                m_ActorDetailWindow->Open(spawned, assetPath.string());
+                return;
+            }
             for (const auto& a : m_Scene->GetActors()) {
-                if (a->GetName() == className) {
-                    m_ActorDetailWindow->Open(a.get());
+                if (a->GetName() == assetPathStr) {
+                    m_ActorDetailWindow->Open(a.get(), a->AssetPath);
                     return;
                 }
             }
-            auto spawned = m_Scene->SpawnActor(className);
+            auto spawned = m_Scene->SpawnActor(assetPath.stem().string());
             m_OutlinerPanel->SetSelectedActor(spawned);
             m_ActorDetailWindow->Open(spawned);
         };
@@ -651,6 +673,9 @@ namespace Engine {
         m_Project = std::make_unique<Project>(projectFilePath);
         m_ContentBrowserPanel->SetProject(*m_Project);
         m_DetailsPanel->SetProject(m_Project.get());
+        if (m_ActorDetailWindow) {
+            m_ActorDetailWindow->SetProjectContentPath(projectFilePath.parent_path() / m_Project->GetConfig().AssetDirectory);
+        }
         if (m_ProjectHubWindow) {
             m_ProjectHubWindow->AddRecentProject(m_Project->GetConfig().Name, projectFilePath.string());
         }

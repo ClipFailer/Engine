@@ -289,6 +289,17 @@ namespace Engine {
     void ContentBrowserPanel::DrawFileGrid(Scene& scene) {
         // Background right-click context menu
         if (ImGui::BeginPopupContextWindow(nullptr, ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
+            if (ImGui::MenuItem("Create Actor Blueprint (.actor)...")) {
+                std::string baseName = "NewActor";
+                std::filesystem::path newFile = m_CurrentPath / (baseName + ".actor");
+                int counter = 1;
+                while (std::filesystem::exists(newFile)) {
+                    newFile = m_CurrentPath / (baseName + std::to_string(counter++) + ".actor");
+                }
+                Actor temp(newFile.stem().string());
+                temp.SaveToAssetFile(newFile.string());
+                LOG_INFO("Created new Actor Blueprint asset: {}", newFile.string());
+            }
             if (ImGui::MenuItem("Create Class...")) {
                 m_bShowCreateClassWizard = true;
             }
@@ -367,7 +378,7 @@ namespace Engine {
                         break;
                     } else if (isActorAsset) {
                         if (OnActorAssetDoubleClicked) {
-                            OnActorAssetDoubleClicked(entry.path().stem().string());
+                            OnActorAssetDoubleClicked(entry.path().string());
                         }
                     } else if (isUIWidget) {
                         if (OnUIDoubleClicked) {
@@ -387,10 +398,14 @@ namespace Engine {
 
                 // Drag source: drag onto 3D viewport or folders
                 if (ImGui::BeginDragDropSource()) {
-                    if (isActorAsset || isCppOrHeader) {
+                    if (isActorAsset) {
+                        std::string pathStr = entry.path().string();
+                        ImGui::SetDragDropPayload("ACTOR_ASSET", pathStr.c_str(), pathStr.size() + 1);
+                        ImGui::Text("Spawn Actor Asset: %s", filename.c_str());
+                    } else if (isCppOrHeader) {
                         std::string stem = entry.path().stem().string();
                         ImGui::SetDragDropPayload("ACTOR_ASSET", stem.c_str(), stem.size() + 1);
-                        ImGui::Text("Spawn Actor: %s", stem.c_str());
+                        ImGui::Text("Spawn C++ Actor: %s", stem.c_str());
                     } else {
                         std::string pathStr = entry.path().string();
                         ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", pathStr.c_str(), pathStr.size() + 1);
@@ -422,9 +437,8 @@ namespace Engine {
                         std::string actorAssetLabel = "Create Actor Representation (" + stemName + ".actor)";
                         if (ImGui::MenuItem(actorAssetLabel.c_str())) {
                             std::filesystem::path actorFile = entry.path().parent_path() / (stemName + ".actor");
-                            std::ofstream out(actorFile);
-                            out << "{\n  \"class\": \"" << stemName << "\"\n}\n";
-                            out.close();
+                            Actor temp(stemName);
+                            temp.SaveToAssetFile(actorFile.string());
                             LOG_INFO("Created Actor Representation: {}", actorFile.string());
                         }
 
@@ -455,12 +469,21 @@ namespace Engine {
                         }
                     } else if (isActorAsset) {
                         if (ImGui::MenuItem("Spawn Actor in Scene")) {
-                            auto newActor = scene.SpawnActor(stemName);
-                            newActor->Transform.Position = glm::vec3(0.0f, 1.5f, 0.0f);
-                            if (OnSpawnActorFromClass) OnSpawnActorFromClass(stemName);
+                            if (OnSpawnActorFromAsset) {
+                                OnSpawnActorFromAsset(entry.path().string());
+                            } else {
+                                scene.SpawnActorFromAsset(entry.path(), glm::vec3(0.0f, 1.5f, 0.0f));
+                            }
                         }
-                        if (ImGui::MenuItem("Open Actor Settings (3D Preview)")) {
-                            if (OnActorAssetDoubleClicked) OnActorAssetDoubleClicked(stemName);
+                        if (ImGui::MenuItem("Open in 3D Actor Detail Window")) {
+                            if (OnActorAssetDoubleClicked) OnActorAssetDoubleClicked(entry.path().string());
+                        }
+                        ImGui::Separator();
+                        if (ImGui::MenuItem("Open in VS Code")) {
+                            OpenInVSCode(entry.path());
+                        }
+                        if (ImGui::MenuItem("Open in Internal Code Editor")) {
+                            if (OnFileDoubleClicked) OnFileDoubleClicked(entry.path());
                         }
                     } else if (isUIWidget) {
                         if (ImGui::MenuItem("Open in VS Code")) {

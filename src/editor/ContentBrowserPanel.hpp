@@ -37,6 +37,7 @@ namespace Engine {
         std::function<void(const std::filesystem::path&)> OnOpenScene;
         std::function<void(const std::string&)> OnSpawnActorFromClass;
         std::function<void(const std::string&)> OnActorAssetDoubleClicked;
+        std::function<void(const std::string&)> OnSpawnActorFromAsset;
         std::function<void(const std::filesystem::path&)> OnUIDoubleClicked;
         std::function<void(const std::string&)> OnAttachComponentToSelected;
 

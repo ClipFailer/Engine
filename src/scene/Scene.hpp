@@ -125,6 +125,14 @@ namespace Engine {
         void SetupDefaultScene();
 
         /**
+         * @brief Spawns a new Actor into the scene instantiated from a .actor asset blueprint.
+         * @param assetPath Path to the .actor file.
+         * @param spawnPosition World position to place the spawned actor.
+         * @return Pointer to spawned Actor.
+         */
+        Actor* SpawnActorFromAsset(const std::filesystem::path& assetPath, const glm::vec3& spawnPosition = {0.0f, 1.0f, 0.0f});
+
+        /**
          * @brief Serializes scene to JSON file.
          * @param filepath Destination path.
          * @return True if saved successfully.

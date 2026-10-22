@@ -7,7 +7,9 @@
 #include "scene/StaticMeshComponent.hpp"
 #include "scene/LightComponent.hpp"
 #include "scene/RigidBodyComponent.hpp"
+#include "core/Log.hpp"
 #include <imgui.h>
+#include <filesystem>
 #include <string>
 
 namespace Engine {
@@ -124,6 +126,33 @@ namespace Engine {
                 ImGui::EndMenu();
             }
             ImGui::EndPopup();
+        }
+
+        // Drag and drop target to spawn actor from Content Browser into Scene via Outliner
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ACTOR_ASSET")) {
+                std::string payloadData = (const char*)payload->Data;
+                std::filesystem::path assetPath(payloadData);
+                glm::vec3 spawnPos{0.0f, 1.5f, 0.0f};
+
+                Actor* spawned = nullptr;
+                if (assetPath.extension() == ".actor" && std::filesystem::exists(assetPath)) {
+                    spawned = scene.SpawnActorFromAsset(assetPath, spawnPos);
+                } else {
+                    std::filesystem::path candidate = std::filesystem::current_path() / "Content" / (assetPath.stem().string() + ".actor");
+                    if (std::filesystem::exists(candidate)) {
+                        spawned = scene.SpawnActorFromAsset(candidate, spawnPos);
+                    } else {
+                        spawned = scene.SpawnActor(assetPath.stem().string());
+                        spawned->Transform.Position = spawnPos;
+                    }
+                }
+                if (spawned) {
+                    m_SelectedActor = spawned;
+                }
+                LOG_INFO("Spawned Actor '{}' into Scene via Outliner Drag-and-Drop", spawned ? spawned->GetName() : payloadData);
+            }
+            ImGui::EndDragDropTarget();
         }
 
         ImGui::EndChild();

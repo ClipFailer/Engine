@@ -9,14 +9,61 @@
 #include "scene/CollisionComponent.hpp"
 #include "scene/PhysicsComponent.hpp"
 #include "scene/PositionComponent.hpp"
+#include "scene/LightComponent.hpp"
+#include "scene/AudioComponent.hpp"
+#include "scene/WidgetComponent.hpp"
 #include "reflection/Reflection.hpp"
+#include "core/Log.hpp"
 #include <imgui.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <filesystem>
 #include <vector>
 #include <array>
 #include <cmath>
 
 namespace Engine {
+
+    void ActorDetailWindow::Open(Actor* actor, const std::string& assetPath) {
+        m_TargetActor = actor;
+        m_bIsOpen = (actor != nullptr);
+        m_bJustOpened = true;
+        m_bDirty = false;
+        m_SaveNotificationTimer = 0.0f;
+
+        if (!assetPath.empty()) {
+            m_AssociatedAssetPath = assetPath;
+            if (m_TargetActor) m_TargetActor->AssetPath = assetPath;
+        } else if (m_TargetActor && !m_TargetActor->AssetPath.empty()) {
+            m_AssociatedAssetPath = m_TargetActor->AssetPath;
+        } else if (m_TargetActor) {
+            std::filesystem::path dir = !m_ProjectContentPath.empty() ? m_ProjectContentPath : (std::filesystem::current_path() / "Content");
+            m_AssociatedAssetPath = (dir / (m_TargetActor->GetName() + ".actor")).string();
+            m_TargetActor->AssetPath = m_AssociatedAssetPath;
+        }
+    }
+
+    void ActorDetailWindow::Close() noexcept {
+        if (m_TargetActor && m_bDirty) {
+            SaveCurrentAsset();
+        }
+        m_TargetActor = nullptr;
+        m_bIsOpen = false;
+    }
+
+    bool ActorDetailWindow::SaveCurrentAsset() {
+        if (!m_TargetActor) return false;
+        if (m_AssociatedAssetPath.empty()) {
+            std::filesystem::path dir = !m_ProjectContentPath.empty() ? m_ProjectContentPath : (std::filesystem::current_path() / "Content");
+            m_AssociatedAssetPath = (dir / (m_TargetActor->GetName() + ".actor")).string();
+        }
+        bool ok = m_TargetActor->SaveToAssetFile(m_AssociatedAssetPath);
+        if (ok) {
+            m_bDirty = false;
+            m_SaveNotificationTimer = 3.0f;
+            LOG_INFO("ActorDetailWindow: Saved actor properties to '{}'", m_AssociatedAssetPath);
+        }
+        return ok;
+    }
 
     void ActorDetailWindow::Render(const Scene& scene) {
         if (!m_bIsOpen || !m_TargetActor) return;
@@ -56,17 +103,35 @@ namespace Engine {
             // 1. Menu Bar
             if (ImGui::BeginMenuBar()) {
                 if (ImGui::MenuItem("<- Back to Main Editor")) {
-                    m_bIsOpen = false;
+                    Close();
                 }
 
                 ImGui::Separator();
                 ImGui::Text("Editing: %s (%s)", m_TargetActor->GetName().c_str(), m_TargetActor->Tag.c_str());
+
+                ImGui::Separator();
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.52f, 0.28f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.65f, 0.35f, 1.0f));
+                if (ImGui::Button("Save .actor Asset (Ctrl+S)", ImVec2(170, 22))) {
+                    SaveCurrentAsset();
+                }
+                ImGui::PopStyleColor(2);
+
+                std::filesystem::path p(m_AssociatedAssetPath);
+                ImGui::TextDisabled("File: %s", p.filename().string().c_str());
+
+                if (m_SaveNotificationTimer > 0.0f) {
+                    ImGui::TextColored(ImVec4(0.3f, 0.95f, 0.45f, 1.0f), "[Saved to .actor!]");
+                } else if (m_bDirty) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.25f, 1.0f), "[Unsaved changes]");
+                }
 
                 if (auto coll = m_TargetActor->GetComponent<CollisionComponent>()) {
                     if (auto mesh = m_TargetActor->GetComponent<StaticMeshComponent>()) {
                         ImGui::Separator();
                         if (ImGui::MenuItem("Fit Collision to Mesh")) {
                             coll->FitToMesh(*mesh);
+                            SaveCurrentAsset();
                         }
                     }
                 }
@@ -79,6 +144,14 @@ namespace Engine {
                 }
 
                 ImGui::EndMenuBar();
+            }
+
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S)) {
+                SaveCurrentAsset();
+            }
+            if (m_SaveNotificationTimer > 0.0f) {
+                m_SaveNotificationTimer -= io.DeltaTime;
             }
 
             // 2. Fullscreen split layout: Left = 3D Scene Viewport, Right = Inspector
@@ -333,6 +406,8 @@ namespace Engine {
     }
 
     void ActorDetailWindow::DrawInspectorPanel() {
+        bool bChanged = false;
+
         // 1. General Info & Tag
         if (ImGui::CollapsingHeader("General & Tag", ImGuiTreeNodeFlags_DefaultOpen)) {
             char nameBuf[128];
@@ -340,6 +415,7 @@ namespace Engine {
             nameBuf[sizeof(nameBuf) - 1] = '\0';
             if (ImGui::InputText("Actor Name", nameBuf, sizeof(nameBuf))) {
                 m_TargetActor->SetName(nameBuf);
+                bChanged = true;
             }
 
             char tagBuf[64];
@@ -347,6 +423,7 @@ namespace Engine {
             tagBuf[sizeof(tagBuf) - 1] = '\0';
             if (ImGui::InputText("Tag", tagBuf, sizeof(tagBuf))) {
                 m_TargetActor->Tag = tagBuf;
+                bChanged = true;
             }
 
             ImGui::SameLine();
@@ -355,19 +432,22 @@ namespace Engine {
                 for (const char* p : presets) {
                     if (ImGui::Selectable(p)) {
                         m_TargetActor->Tag = p;
+                        bChanged = true;
                     }
                 }
                 ImGui::EndCombo();
             }
 
-            ImGui::Checkbox("Visible in World", &m_TargetActor->bIsVisible);
+            if (ImGui::Checkbox("Visible in World", &m_TargetActor->bIsVisible)) {
+                bChanged = true;
+            }
         }
 
         // 2. Transform (Location, Rotation, Scale)
         if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::DragFloat3("Location", &m_TargetActor->Transform.Position.x, 0.05f);
-            ImGui::DragFloat3("Rotation", &m_TargetActor->Transform.Rotation.x, 0.5f);
-            ImGui::DragFloat3("Scale",    &m_TargetActor->Transform.Scale.x, 0.05f, 0.01f, 100.0f);
+            if (ImGui::DragFloat3("Location", &m_TargetActor->Transform.Position.x, 0.05f)) bChanged = true;
+            if (ImGui::DragFloat3("Rotation", &m_TargetActor->Transform.Rotation.x, 0.5f))  bChanged = true;
+            if (ImGui::DragFloat3("Scale",    &m_TargetActor->Transform.Scale.x, 0.05f, 0.01f, 100.0f)) bChanged = true;
 
             if (auto posComp = m_TargetActor->GetComponent<PositionComponent>()) {
                 posComp->Transform = m_TargetActor->Transform;
@@ -381,12 +461,13 @@ namespace Engine {
                 int currentMeshIndex = static_cast<int>(meshComp->MeshType);
                 if (ImGui::Combo("Mesh Primitive", &currentMeshIndex, meshNames, IM_ARRAYSIZE(meshNames))) {
                     meshComp->MeshType = static_cast<PrimitiveType>(currentMeshIndex);
+                    bChanged = true;
                 }
 
-                ImGui::ColorEdit4("Base Color", &meshComp->BaseColor.x);
-                ImGui::SliderFloat("Metallic", &meshComp->Metallic, 0.0f, 1.0f);
-                ImGui::SliderFloat("Roughness", &meshComp->Roughness, 0.0f, 1.0f);
-                ImGui::Checkbox("Cast Dynamic Shadows", &meshComp->bCastShadows);
+                if (ImGui::ColorEdit4("Base Color", &meshComp->BaseColor.x)) bChanged = true;
+                if (ImGui::SliderFloat("Metallic", &meshComp->Metallic, 0.0f, 1.0f)) bChanged = true;
+                if (ImGui::SliderFloat("Roughness", &meshComp->Roughness, 0.0f, 1.0f)) bChanged = true;
+                if (ImGui::Checkbox("Cast Dynamic Shadows", &meshComp->bCastShadows)) bChanged = true;
             }
         }
 
@@ -397,24 +478,26 @@ namespace Engine {
                 int currentShape = static_cast<int>(collComp->Shape);
                 if (ImGui::Combo("Collider Shape", &currentShape, shapeNames, IM_ARRAYSIZE(shapeNames))) {
                     collComp->Shape = static_cast<CollisionShape>(currentShape);
+                    bChanged = true;
                 }
 
                 if (collComp->Shape == CollisionShape::Box) {
-                    ImGui::DragFloat3("Box Half Extents", &collComp->BoxHalfExtents.x, 0.05f, 0.05f, 50.0f);
+                    if (ImGui::DragFloat3("Box Half Extents", &collComp->BoxHalfExtents.x, 0.05f, 0.05f, 50.0f)) bChanged = true;
                 } else {
-                    ImGui::DragFloat("Sphere Radius", &collComp->SphereRadius, 0.05f, 0.05f, 50.0f);
+                    if (ImGui::DragFloat("Sphere Radius", &collComp->SphereRadius, 0.05f, 0.05f, 50.0f)) bChanged = true;
                 }
 
-                ImGui::DragFloat3("Center Offset", &collComp->Offset.x, 0.05f);
-                ImGui::SliderFloat("Restitution (Bounce)", &collComp->Restitution, 0.0f, 1.0f);
-                ImGui::SliderFloat("Friction", &collComp->Friction, 0.0f, 1.0f);
-                ImGui::Checkbox("Is Trigger (Overlap Only)", &collComp->bIsTrigger);
+                if (ImGui::DragFloat3("Center Offset", &collComp->Offset.x, 0.05f)) bChanged = true;
+                if (ImGui::SliderFloat("Restitution (Bounce)", &collComp->Restitution, 0.0f, 1.0f)) bChanged = true;
+                if (ImGui::SliderFloat("Friction", &collComp->Friction, 0.0f, 1.0f)) bChanged = true;
+                if (ImGui::Checkbox("Is Trigger (Overlap Only)", &collComp->bIsTrigger)) bChanged = true;
 
                 ImGui::Spacing();
                 if (auto mesh = m_TargetActor->GetComponent<StaticMeshComponent>()) {
                     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.55f, 0.35f, 1.0f));
                     if (ImGui::Button("Fit Collision to Mesh", ImVec2(-1, 30))) {
                         collComp->FitToMesh(*mesh);
+                        bChanged = true;
                     }
                     ImGui::PopStyleColor();
                 }
@@ -424,12 +507,18 @@ namespace Engine {
         // 5. Physics Component
         if (auto physComp = m_TargetActor->GetComponent<PhysicsComponent>()) {
             if (ImGui::CollapsingHeader("Physics Component", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::DragFloat("Mass (kg)", &physComp->Mass, 0.1f, 0.01f, 10000.0f);
-                ImGui::Checkbox("Is Static (Immovable)", &physComp->bIsStatic);
-                ImGui::Checkbox("Enable Gravity", &physComp->bUseGravity);
-                ImGui::DragFloat3("Linear Velocity", &physComp->LinearVelocity.x, 0.1f);
-                ImGui::DragFloat3("Angular Velocity", &physComp->AngularVelocity.x, 0.1f);
+                if (ImGui::DragFloat("Mass (kg)", &physComp->Mass, 0.1f, 0.01f, 10000.0f)) bChanged = true;
+                if (ImGui::Checkbox("Is Static (Immovable)", &physComp->bIsStatic)) bChanged = true;
+                if (ImGui::Checkbox("Enable Gravity", &physComp->bUseGravity)) bChanged = true;
+                if (ImGui::DragFloat3("Linear Velocity", &physComp->LinearVelocity.x, 0.1f)) bChanged = true;
+                if (ImGui::DragFloat3("Angular Velocity", &physComp->AngularVelocity.x, 0.1f)) bChanged = true;
             }
+        }
+
+        // Auto-save any modified settings immediately to the .actor file
+        if (bChanged) {
+            m_bDirty = true;
+            SaveCurrentAsset();
         }
     }
 

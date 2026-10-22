@@ -41,12 +41,30 @@ namespace Engine {
         // Drag and drop target to spawn actor from Content Browser directly into 3D scene
         if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ACTOR_ASSET")) {
-                std::string actorClassName = (const char*)payload->Data;
-                auto spawned = scene.SpawnActor(actorClassName);
-                spawned->Transform.Position = m_Camera.GetPosition() + glm::vec3(0.0f, 0.0f, -4.0f);
-                spawned->Transform.Position.y = (std::max)(spawned->Transform.Position.y, 1.0f);
-                if (OnActorSelected) OnActorSelected(spawned);
-                LOG_INFO("Spawned Actor '{}' into 3D Viewport via Drag-and-Drop", actorClassName);
+                std::string payloadData = (const char*)payload->Data;
+                std::filesystem::path assetPath(payloadData);
+
+                glm::vec3 spawnPos = m_Camera.GetPosition() + glm::vec3(0.0f, 0.0f, -4.0f);
+                spawnPos.y = (std::max)(spawnPos.y, 1.0f);
+
+                Actor* spawned = nullptr;
+                if (assetPath.extension() == ".actor" && std::filesystem::exists(assetPath)) {
+                    spawned = scene.SpawnActorFromAsset(assetPath, spawnPos);
+                } else {
+                    // Check if a .actor file with this stem name exists in Content directory
+                    std::filesystem::path candidate = std::filesystem::current_path() / "Content" / (assetPath.stem().string() + ".actor");
+                    if (std::filesystem::exists(candidate)) {
+                        spawned = scene.SpawnActorFromAsset(candidate, spawnPos);
+                    } else {
+                        spawned = scene.SpawnActor(assetPath.stem().string());
+                        spawned->Transform.Position = spawnPos;
+                    }
+                }
+
+                if (spawned && OnActorSelected) {
+                    OnActorSelected(spawned);
+                }
+                LOG_INFO("Spawned Actor '{}' into 3D Viewport via Drag-and-Drop", spawned ? spawned->GetName() : payloadData);
             }
             ImGui::EndDragDropTarget();
         }

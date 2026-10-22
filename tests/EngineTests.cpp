@@ -442,6 +442,73 @@ namespace EngineTests {
         return true;
     }
 
+    bool TestActorAssetSerializationAndReinstantiation() {
+        std::filesystem::path assetPath = std::filesystem::temp_directory_path() / "TestHero.actor";
+
+        // 1. Create original actor and configure properties in detail
+        Engine::Scene scene;
+        auto original = scene.SpawnActor("TestHero");
+        original->Tag = "Hero";
+        original->Transform.Scale = glm::vec3(1.5f, 2.0f, 1.5f);
+
+        auto mesh = original->GetComponent<Engine::StaticMeshComponent>();
+        TEST_ASSERT(mesh != nullptr, "Failed to get StaticMeshComponent");
+        mesh->MeshType = Engine::PrimitiveType::Sphere;
+        mesh->BaseColor = glm::vec4(0.2f, 0.8f, 0.4f, 1.0f);
+        mesh->Metallic = 0.75f;
+        mesh->Roughness = 0.25f;
+
+        auto coll = original->GetComponent<Engine::CollisionComponent>();
+        TEST_ASSERT(coll != nullptr, "Failed to get CollisionComponent");
+        coll->Shape = Engine::CollisionShape::Sphere;
+        coll->SphereRadius = 0.75f;
+        coll->Restitution = 0.85f;
+        coll->Friction = 0.35f;
+
+        auto phys = original->GetComponent<Engine::PhysicsComponent>();
+        TEST_ASSERT(phys != nullptr, "Failed to get PhysicsComponent");
+        phys->Mass = 30.0f;
+        phys->bUseGravity = true;
+
+        // 2. Save detailed configuration to .actor file
+        bool saved = original->SaveToAssetFile(assetPath.string());
+        TEST_ASSERT(saved, "Failed to save actor to .actor asset file");
+        TEST_ASSERT(std::filesystem::exists(assetPath), ".actor asset file was not created on disk");
+
+        // 3. Re-instantiate (.actor dragged and dropped or spawned into scene)
+        Engine::Scene scene2;
+        glm::vec3 spawnPos(4.0f, 2.0f, -6.0f);
+        auto spawned = scene2.SpawnActorFromAsset(assetPath, spawnPos);
+        TEST_ASSERT(spawned != nullptr, "Failed to spawn actor from .actor asset");
+
+        // 4. Verify all saved settings were correctly applied
+        TEST_ASSERT(spawned->Tag == "Hero", "Tag not preserved in .actor reinstantiation");
+        TEST_ASSERT(std::abs(spawned->Transform.Scale.x - 1.5f) < 0.001f, "Scale.X not preserved");
+        TEST_ASSERT(std::abs(spawned->Transform.Scale.y - 2.0f) < 0.001f, "Scale.Y not preserved");
+        TEST_ASSERT(std::abs(spawned->Transform.Position.x - 4.0f) < 0.001f, "Spawn position X mismatch");
+        TEST_ASSERT(std::abs(spawned->Transform.Position.y - 2.0f) < 0.001f, "Spawn position Y mismatch");
+        TEST_ASSERT(std::abs(spawned->Transform.Position.z - (-6.0f)) < 0.001f, "Spawn position Z mismatch");
+
+        auto spawnedMesh = spawned->GetComponent<Engine::StaticMeshComponent>();
+        TEST_ASSERT(spawnedMesh != nullptr, "StaticMeshComponent missing on spawned actor");
+        TEST_ASSERT(spawnedMesh->MeshType == Engine::PrimitiveType::Sphere, "Mesh type mismatch");
+        TEST_ASSERT(std::abs(spawnedMesh->BaseColor.r - 0.2f) < 0.01f, "Mesh color R mismatch");
+        TEST_ASSERT(std::abs(spawnedMesh->Metallic - 0.75f) < 0.01f, "Mesh metallic mismatch");
+
+        auto spawnedColl = spawned->GetComponent<Engine::CollisionComponent>();
+        TEST_ASSERT(spawnedColl != nullptr, "CollisionComponent missing on spawned actor");
+        TEST_ASSERT(spawnedColl->Shape == Engine::CollisionShape::Sphere, "Collision shape mismatch");
+        TEST_ASSERT(std::abs(spawnedColl->SphereRadius - 0.75f) < 0.01f, "Sphere radius mismatch");
+        TEST_ASSERT(std::abs(spawnedColl->Restitution - 0.85f) < 0.01f, "Restitution mismatch");
+
+        auto spawnedPhys = spawned->GetComponent<Engine::PhysicsComponent>();
+        TEST_ASSERT(spawnedPhys != nullptr, "PhysicsComponent missing on spawned actor");
+        TEST_ASSERT(std::abs(spawnedPhys->Mass - 30.0f) < 0.01f, "Physics mass mismatch");
+
+        std::filesystem::remove(assetPath);
+        return true;
+    }
+
 } // namespace EngineTests
 
 int main() {
@@ -450,7 +517,7 @@ int main() {
     std::cout << "========================================\n";
 
     int passed = 0;
-    int total = 13;
+    int total = 14;
 
     auto runTest = [&](const char* name, bool(*func)()) {
         std::cout << "[RUNNING] " << name << "... ";
@@ -475,6 +542,7 @@ int main() {
     runTest("Character Locomotion, UI & Custom Components", EngineTests::TestCharacterAndUIComponents);
     runTest("Scene Persistence, Coordinates & Component State", EngineTests::TestSceneSerializationAndCoordinates);
     runTest("Actor-to-Actor 3D Collision Resolution", EngineTests::TestActorToActorCollision);
+    runTest("Actor Asset (.actor) Persistence & Reinstantiation", EngineTests::TestActorAssetSerializationAndReinstantiation);
 
     std::cout << "========================================\n";
     std::cout << "Tests Passed: " << passed << " / " << total << "\n";
