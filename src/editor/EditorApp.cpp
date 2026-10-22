@@ -9,10 +9,20 @@
 #include "scene/StaticMeshComponent.hpp"
 #include "scene/LightComponent.hpp"
 #include "scene/RigidBodyComponent.hpp"
+#include "module/ModuleManager.hpp"
+#include "ui/UIModule.hpp"
+#include "animation/AnimationModule.hpp"
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <imgui_internal.h>
 #include <chrono>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 namespace Engine {
 
@@ -23,6 +33,14 @@ namespace Engine {
     }
 
     bool EditorApp::Initialize() {
+#if defined(_WIN32)
+        // Hide Windows command prompt window on startup for clean desktop editor experience
+        HWND consoleWnd = GetConsoleWindow();
+        if (consoleWnd) {
+            ShowWindow(consoleWnd, SW_HIDE);
+        }
+#endif
+
         // 1. Initialize GLFW
         if (!glfwInit()) {
             LOG_ERROR("Failed to initialize GLFW");
@@ -56,30 +74,47 @@ namespace Engine {
 
         m_PhysicsWorld = std::make_unique<PhysicsWorld>();
 
-        // 4. Project, Scene, Camera
+        // 4. Register Engine Modules
+        ModuleManager::Get().RegisterModule<UIModule>();
+        ModuleManager::Get().RegisterModule<AnimationModule>();
+
+        // 5. Project, Scene, Camera
         m_Project = std::make_unique<Project>();
         m_Scene = std::make_unique<Scene>();
         m_Camera = std::make_unique<Camera>();
         m_Camera->SetPosition(glm::vec3(0.0f, 4.0f, 10.0f));
 
-        // 5. ImGui Initialization
+        // 6. ImGui Initialization
         InitImGui();
 
-        // 6. Vulkan Forward Renderer
+        // 7. Vulkan Forward Renderer
         m_Renderer = std::make_unique<VulkanRenderer>(m_VulkanContext);
         if (!m_Renderer->Initialize()) {
             LOG_ERROR("Failed to initialize VulkanRenderer");
             return false;
         }
 
-        // 7. Panels
-        m_ViewportPanel = std::make_unique<ViewportPanel>(*m_Renderer, *m_Camera);
+        // 8. Panels & Windows
+        m_ViewportPanel = std::make_unique<ViewportPanel>(*m_Renderer, *m_Camera, *m_PhysicsWorld);
         m_OutlinerPanel = std::make_unique<OutlinerPanel>();
         m_DetailsPanel = std::make_unique<DetailsPanel>();
         m_ContentBrowserPanel = std::make_unique<ContentBrowserPanel>(*m_Project);
         m_ConsolePanel = std::make_unique<ConsolePanel>();
+        m_ActorDetailWindow = std::make_unique<ActorDetailWindow>();
+        m_SettingsDialogs = std::make_unique<SettingsDialogs>();
 
-        // 8. Command Buffers & Sync Objects
+        // Wire selection and double-click callbacks
+        m_ViewportPanel->OnActorSelected = [this](Actor* a) {
+            m_OutlinerPanel->SetSelectedActor(a);
+        };
+        m_ViewportPanel->OnActorDoubleClicked = [this](Actor* a) {
+            m_ActorDetailWindow->Open(a);
+        };
+        m_OutlinerPanel->OnActorDoubleClicked = [this](Actor* a) {
+            m_ActorDetailWindow->Open(a);
+        };
+
+        // 9. Command Buffers & Sync Objects
         m_CommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -191,6 +226,7 @@ namespace Engine {
         ShutdownImGui();
         m_SwapChain.reset();
         m_AudioEngine.reset();
+        ModuleManager::Get().Shutdown();
         m_VulkanContext.Shutdown();
 
         if (m_Window) {
@@ -209,6 +245,9 @@ namespace Engine {
             auto currentTime = std::chrono::high_resolution_clock::now();
             float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - lastTime).count();
             lastTime = currentTime;
+
+            // Update Modules
+            ModuleManager::Get().UpdateModules(deltaTime);
 
             // Physics and Simulation Step
             if (m_Scene->GetState() == SimulationState::Playing) {
@@ -326,6 +365,10 @@ namespace Engine {
         m_ContentBrowserPanel->Render(*m_Scene);
         m_ConsolePanel->Render();
 
+        m_ActorDetailWindow->Render();
+        m_SettingsDialogs->Render(*m_Project, *m_PhysicsWorld);
+        RenderNewProjectModal();
+
         ImGui::End();
     }
 
@@ -333,7 +376,7 @@ namespace Engine {
         if (ImGui::BeginMenuBar()) {
             if (ImGui::BeginMenu("File")) {
                 if (ImGui::MenuItem("New Project...")) {
-                    m_Project = Project::CreateNew("C:/Projects/Vulkan/MyGame", "MyGame");
+                    m_bShowNewProjectModal = true;
                 }
                 if (ImGui::MenuItem("Save Scene")) {
                     m_Scene->SaveToFile("DefaultScene.json");
@@ -344,23 +387,44 @@ namespace Engine {
                 ImGui::EndMenu();
             }
 
+            if (ImGui::BeginMenu("Edit")) {
+                if (ImGui::MenuItem("Project Settings...")) {
+                    m_SettingsDialogs->OpenProjectSettings();
+                }
+                if (ImGui::MenuItem("Engine Settings...")) {
+                    m_SettingsDialogs->OpenEngineSettings();
+                }
+                ImGui::EndMenu();
+            }
+
             if (ImGui::BeginMenu("Actor")) {
                 if (ImGui::MenuItem("Spawn Cube")) {
                     auto a = m_Scene->SpawnActor("Cube");
-                    a->AddComponent<StaticMeshComponent>(PrimitiveType::Cube);
-                    a->AddComponent<RigidBodyComponent>();
                     m_OutlinerPanel->SetSelectedActor(a);
                 }
                 if (ImGui::MenuItem("Spawn Sphere")) {
                     auto a = m_Scene->SpawnActor("Sphere");
-                    a->AddComponent<StaticMeshComponent>(PrimitiveType::Sphere);
-                    a->AddComponent<RigidBodyComponent>();
+                    if (auto mesh = a->GetComponent<StaticMeshComponent>()) {
+                        mesh->MeshType = PrimitiveType::Sphere;
+                    }
                     m_OutlinerPanel->SetSelectedActor(a);
                 }
                 if (ImGui::MenuItem("Spawn Directional Light")) {
                     auto a = m_Scene->SpawnActor("Sun");
                     a->AddComponent<LightComponent>(LightType::Directional);
                     m_OutlinerPanel->SetSelectedActor(a);
+                }
+                if (ImGui::MenuItem("Spawn Point Light")) {
+                    auto a = m_Scene->SpawnActor("Point Light");
+                    a->Transform.Position = glm::vec3(0.0f, 3.0f, 0.0f);
+                    auto pl = a->AddComponent<LightComponent>(LightType::Point);
+                    pl->Radius = 12.0f;
+                    pl->Intensity = 2.0f;
+                    m_OutlinerPanel->SetSelectedActor(a);
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Open Actor Detail Window", nullptr, false, m_OutlinerPanel->GetSelectedActor() != nullptr)) {
+                    m_ActorDetailWindow->Open(m_OutlinerPanel->GetSelectedActor());
                 }
                 ImGui::EndMenu();
             }
@@ -373,6 +437,40 @@ namespace Engine {
             }
 
             ImGui::EndMenuBar();
+        }
+    }
+
+    void EditorApp::RenderNewProjectModal() {
+        if (m_bShowNewProjectModal) {
+            ImGui::OpenPopup("Create New Game Project###NewProjectModal");
+        }
+
+        if (ImGui::BeginPopupModal("Create New Game Project###NewProjectModal", &m_bShowNewProjectModal, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Enter Project Name:");
+            if (ImGui::InputText("##ProjName", m_NewProjectName, sizeof(m_NewProjectName))) {
+                std::string folder = "C:/Projects/Vulkan/" + std::string(m_NewProjectName);
+                std::strncpy(m_NewProjectFolder, folder.c_str(), sizeof(m_NewProjectFolder) - 1);
+            }
+
+            ImGui::Text("Project Destination Folder:");
+            ImGui::InputText("##ProjFolder", m_NewProjectFolder, sizeof(m_NewProjectFolder));
+
+            ImGui::Spacing();
+            ImGui::Separator();
+
+            if (ImGui::Button("Create & Open Project", ImVec2(180, 28))) {
+                m_Project = Project::CreateNew(std::filesystem::path(m_NewProjectFolder), m_NewProjectName);
+                m_ContentBrowserPanel->SetProject(*m_Project);
+                LOG_INFO("Opened newly created project: {} at {}", m_NewProjectName, m_NewProjectFolder);
+                m_bShowNewProjectModal = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(80, 28))) {
+                m_bShowNewProjectModal = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
         }
     }
 

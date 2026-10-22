@@ -4,13 +4,27 @@
  */
 
 #include "Actor.hpp"
+#include "PositionComponent.hpp"
+#include "StaticMeshComponent.hpp"
+#include "PhysicsComponent.hpp"
+#include "CollisionComponent.hpp"
 #include <algorithm>
 
 namespace Engine {
 
-    Actor::Actor() : Object("Actor") {}
+    Actor::Actor() : Object("Actor") {
+        AddComponent<PositionComponent>();
+        AddComponent<StaticMeshComponent>(PrimitiveType::Cube);
+        AddComponent<PhysicsComponent>();
+        AddComponent<CollisionComponent>();
+    }
 
-    Actor::Actor(std::string name) : Object(std::move(name)) {}
+    Actor::Actor(std::string name) : Object(std::move(name)) {
+        AddComponent<PositionComponent>();
+        AddComponent<StaticMeshComponent>(PrimitiveType::Cube);
+        AddComponent<PhysicsComponent>();
+        AddComponent<CollisionComponent>();
+    }
 
     void Actor::BeginPlay() {
         for (auto& comp : m_Components) {
@@ -46,6 +60,7 @@ namespace Engine {
 
     ENGINE_CLASS_BEGIN(Actor, Object)
         ENGINE_PROPERTY(Actor, Transform, Transform, "Transform", "Spatial transform (Location, Rotation, Scale)")
+        ENGINE_PROPERTY(Actor, Tag, String, "General", "Actor category tag")
         ENGINE_PROPERTY(Actor, bIsVisible, Bool, "Rendering", "Visibility flag in scene")
     ENGINE_CLASS_END()
 

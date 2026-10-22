@@ -12,6 +12,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Compiler flags for Clang & MSVC
+add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(
         -Wall
@@ -63,6 +65,9 @@ file(GLOB_RECURSE ENGINE_CORE_SOURCES
     "src/physics/*.cpp"
     "src/audio/*.cpp"
     "src/project/*.cpp"
+    "src/module/*.cpp"
+    "src/ui/*.cpp"
+    "src/animation/*.cpp"
 )
 
 file(GLOB_RECURSE ENGINE_CORE_HEADERS
@@ -73,6 +78,9 @@ file(GLOB_RECURSE ENGINE_CORE_HEADERS
     "src/physics/*.hpp"
     "src/audio/*.hpp"
     "src/project/*.hpp"
+    "src/module/*.hpp"
+    "src/ui/*.hpp"
+    "src/animation/*.hpp"
 )
 
 add_library(EngineCore STATIC
@@ -96,6 +104,7 @@ target_link_libraries(EngineCore PUBLIC
     Vulkan::Vulkan
     glfw
     glm::glm
+    imgui_lib
     nlohmann_json::nlohmann_json
 )
 

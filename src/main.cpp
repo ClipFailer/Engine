@@ -11,6 +11,11 @@
 #include "scene/LightComponent.hpp"
 #include "scene/RigidBodyComponent.hpp"
 #include "scene/AudioComponent.hpp"
+#include "scene/PositionComponent.hpp"
+#include "scene/PhysicsComponent.hpp"
+#include "scene/CollisionComponent.hpp"
+#include "scene/MovementComponent.hpp"
+#include "animation/SkeletalMeshComponent.hpp"
 
 /**
  * @brief Main engine application entry point.
@@ -26,6 +31,11 @@ int main(int argc, char* argv[]) {
     Engine::LightComponent::RegisterReflection();
     Engine::RigidBodyComponent::RegisterReflection();
     Engine::AudioComponent::RegisterReflection();
+    Engine::PositionComponent::RegisterReflection();
+    Engine::PhysicsComponent::RegisterReflection();
+    Engine::CollisionComponent::RegisterReflection();
+    Engine::MovementComponent::RegisterReflection();
+    Engine::SkeletalMeshComponent::RegisterReflection();
 
     LOG_INFO("Vulkan 3D Engine Editor starting up...");
 

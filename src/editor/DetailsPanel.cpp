@@ -8,6 +8,11 @@
 #include "scene/LightComponent.hpp"
 #include "scene/RigidBodyComponent.hpp"
 #include "scene/AudioComponent.hpp"
+#include "scene/PositionComponent.hpp"
+#include "scene/PhysicsComponent.hpp"
+#include "scene/CollisionComponent.hpp"
+#include "scene/MovementComponent.hpp"
+#include "animation/SkeletalMeshComponent.hpp"
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -63,17 +68,32 @@ namespace Engine {
         }
 
         if (ImGui::BeginPopup("AddComponentPopup")) {
+            if (ImGui::MenuItem("Position Component")) {
+                actor->AddComponent<PositionComponent>();
+            }
             if (ImGui::MenuItem("Static Mesh Component")) {
                 actor->AddComponent<StaticMeshComponent>();
             }
-            if (ImGui::MenuItem("Light Component")) {
-                actor->AddComponent<LightComponent>();
+            if (ImGui::MenuItem("Collision Component")) {
+                actor->AddComponent<CollisionComponent>();
             }
-            if (ImGui::MenuItem("RigidBody Component")) {
-                actor->AddComponent<RigidBodyComponent>();
+            if (ImGui::MenuItem("Physics Component")) {
+                actor->AddComponent<PhysicsComponent>();
+            }
+            if (ImGui::MenuItem("Movement Component")) {
+                actor->AddComponent<MovementComponent>();
+            }
+            if (ImGui::MenuItem("Light Component (Directional)")) {
+                actor->AddComponent<LightComponent>(LightType::Directional);
+            }
+            if (ImGui::MenuItem("Light Component (Point)")) {
+                actor->AddComponent<LightComponent>(LightType::Point);
             }
             if (ImGui::MenuItem("Audio Component")) {
                 actor->AddComponent<AudioComponent>();
+            }
+            if (ImGui::MenuItem("Skeletal Mesh Component")) {
+                actor->AddComponent<SkeletalMeshComponent>();
             }
             ImGui::EndPopup();
         }

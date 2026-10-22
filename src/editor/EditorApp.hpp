@@ -18,6 +18,8 @@
 #include "DetailsPanel.hpp"
 #include "ContentBrowserPanel.hpp"
 #include "ConsolePanel.hpp"
+#include "ActorDetailWindow.hpp"
+#include "SettingsDialogs.hpp"
 #include <memory>
 
 namespace Engine {
@@ -53,6 +55,7 @@ namespace Engine {
         void RenderUI();
         void RenderMainMenuBar();
         void RenderTopToolbar();
+        void RenderNewProjectModal();
 
         GLFWwindow* m_Window{nullptr};
         VulkanContext m_VulkanContext;
@@ -69,6 +72,12 @@ namespace Engine {
         std::unique_ptr<DetailsPanel> m_DetailsPanel;
         std::unique_ptr<ContentBrowserPanel> m_ContentBrowserPanel;
         std::unique_ptr<ConsolePanel> m_ConsolePanel;
+        std::unique_ptr<ActorDetailWindow> m_ActorDetailWindow;
+        std::unique_ptr<SettingsDialogs> m_SettingsDialogs;
+
+        bool m_bShowNewProjectModal{false};
+        char m_NewProjectName[64]{"MyNewGame"};
+        char m_NewProjectFolder[256]{"C:/Projects/Vulkan/MyNewGame"};
 
         VkDescriptorPool m_ImGuiDescriptorPool{VK_NULL_HANDLE};
         std::vector<VkCommandBuffer> m_CommandBuffers;

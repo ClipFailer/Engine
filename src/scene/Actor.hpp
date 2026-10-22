@@ -87,6 +87,7 @@ namespace Engine {
         void RemoveComponent(Component* comp);
 
         Transform Transform; ///< Actor local/world spatial transformation.
+        std::string Tag{"Default"}; ///< Identification tag (e.g., Player, Enemy, Obstacle).
         bool bIsVisible{true};
 
     protected:

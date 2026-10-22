@@ -11,13 +11,20 @@
 #include "scene/Object.hpp"
 #include "scene/Component.hpp"
 #include "scene/Actor.hpp"
+#include "scene/PositionComponent.hpp"
 #include "scene/StaticMeshComponent.hpp"
+#include "scene/PhysicsComponent.hpp"
+#include "scene/CollisionComponent.hpp"
+#include "scene/MovementComponent.hpp"
 #include "scene/LightComponent.hpp"
-#include "scene/RigidBodyComponent.hpp"
 #include "scene/Scene.hpp"
 #include "scene/Primitives.hpp"
 #include "physics/PhysicsWorld.hpp"
 #include "project/Project.hpp"
+#include "module/ModuleManager.hpp"
+#include "ui/UIModule.hpp"
+#include "animation/AnimationModule.hpp"
+#include "animation/SkeletalMeshComponent.hpp"
 
 #include <iostream>
 #include <cassert>
@@ -65,9 +72,13 @@ namespace EngineTests {
     bool TestReflection() {
         Engine::Component::RegisterReflection();
         Engine::Actor::RegisterReflection();
+        Engine::PositionComponent::RegisterReflection();
         Engine::StaticMeshComponent::RegisterReflection();
+        Engine::PhysicsComponent::RegisterReflection();
+        Engine::CollisionComponent::RegisterReflection();
+        Engine::MovementComponent::RegisterReflection();
         Engine::LightComponent::RegisterReflection();
-        Engine::RigidBodyComponent::RegisterReflection();
+        Engine::SkeletalMeshComponent::RegisterReflection();
 
         const auto* cls = Engine::TypeRegistry::Get().FindClass("StaticMeshComponent");
         TEST_ASSERT(cls != nullptr, "Class StaticMeshComponent not found in TypeRegistry");
@@ -101,13 +112,15 @@ namespace EngineTests {
         TEST_ASSERT(actor != nullptr, "SpawnActor returned nullptr");
         TEST_ASSERT(actor->GetName() == "PlayerShip", "Actor name mismatch");
 
-        auto mesh = actor->AddComponent<Engine::StaticMeshComponent>(Engine::PrimitiveType::Cube);
-        TEST_ASSERT(mesh != nullptr, "AddComponent StaticMeshComponent failed");
-        TEST_ASSERT(actor->GetComponent<Engine::StaticMeshComponent>() == mesh, "GetComponent returned wrong pointer");
+        // Check default components on Actor (Position, StaticMesh, Physics, Collision)
+        TEST_ASSERT(actor->GetComponent<Engine::PositionComponent>() != nullptr, "Actor must have default PositionComponent");
+        TEST_ASSERT(actor->GetComponent<Engine::StaticMeshComponent>() != nullptr, "Actor must have default StaticMeshComponent");
+        TEST_ASSERT(actor->GetComponent<Engine::PhysicsComponent>() != nullptr, "Actor must have default PhysicsComponent");
+        TEST_ASSERT(actor->GetComponent<Engine::CollisionComponent>() != nullptr, "Actor must have default CollisionComponent");
 
         auto light = actor->AddComponent<Engine::LightComponent>(Engine::LightType::Point);
         TEST_ASSERT(light != nullptr, "AddComponent LightComponent failed");
-        TEST_ASSERT(actor->GetComponents().size() == 2, "Component count mismatch");
+        TEST_ASSERT(actor->GetComponents().size() == 5, "Component count mismatch");
 
         // Test snapshot & simulation restore
         actor->Transform.Position = glm::vec3(0.0f, 10.0f, 0.0f);
@@ -122,30 +135,101 @@ namespace EngineTests {
         return true;
     }
 
-    bool TestPhysics() {
+    bool TestPhysicsAndCollisionFitting() {
         Engine::Scene scene;
-        auto fallingSphere = scene.SpawnActor("FallingSphere");
-        fallingSphere->Transform.Position = glm::vec3(0.0f, 10.0f, 0.0f);
+        auto actor = scene.SpawnActor("TestObject");
+        actor->Transform.Position = glm::vec3(0.0f, 8.0f, 0.0f);
 
-        auto rb = fallingSphere->AddComponent<Engine::RigidBodyComponent>();
-        rb->bUseGravity = true;
-        rb->bIsStatic = false;
-        rb->Mass = 1.0f;
-        rb->Shape = Engine::ColliderType::Sphere;
-        rb->ColliderDimensions = glm::vec3(0.5f);
+        auto mesh = actor->GetComponent<Engine::StaticMeshComponent>();
+        auto coll = actor->GetComponent<Engine::CollisionComponent>();
+        auto phys = actor->GetComponent<Engine::PhysicsComponent>();
+
+        TEST_ASSERT(mesh && coll && phys, "Missing core physics/collision components");
+
+        // Test FitToMesh
+        mesh->MeshType = Engine::PrimitiveType::Cube;
+        coll->FitToMesh(*mesh);
+        TEST_ASSERT(coll->BoxHalfExtents.x == 0.5f && coll->BoxHalfExtents.y == 0.5f, "FitToMesh incorrect for Cube");
 
         Engine::PhysicsWorld physics;
-        float initialY = fallingSphere->Transform.Position.y;
+        float initialY = actor->Transform.Position.y;
 
         // Step 1: Check gravity causes downward acceleration
         physics.Step(scene, 0.1f);
-        TEST_ASSERT(fallingSphere->Transform.Position.y < initialY, "Gravity failed to move actor downwards");
-        TEST_ASSERT(rb->LinearVelocity.y < 0.0f, "Velocity should be negative due to gravity");
+        TEST_ASSERT(actor->Transform.Position.y < initialY, "Gravity failed to move actor downwards");
+        TEST_ASSERT(phys->LinearVelocity.y < 0.0f, "Velocity should be negative due to gravity");
 
         // Step 2: Raycast test
         auto hit = physics.Raycast(scene, glm::vec3(0.0f, 20.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 50.0f);
-        TEST_ASSERT(hit.bHit == true, "Raycast should hit the sphere actor");
-        TEST_ASSERT(hit.HitActor == fallingSphere, "Raycast hit incorrect actor");
+        TEST_ASSERT(hit.bHit == true, "Raycast should hit the actor");
+        TEST_ASSERT(hit.HitActor == actor, "Raycast hit incorrect actor");
+
+        return true;
+    }
+
+    bool TestMovementComponent() {
+        Engine::Scene scene;
+        auto pawn = scene.SpawnActor("Pawn");
+        auto moveComp = pawn->AddComponent<Engine::MovementComponent>();
+        moveComp->MaxSpeed = 10.0f;
+        moveComp->Acceleration = 100.0f;
+
+        glm::vec3 startPos = pawn->Transform.Position;
+        moveComp->AddInputVector(glm::vec3(1.0f, 0.0f, 0.0f));
+        moveComp->Tick(0.1f);
+
+        TEST_ASSERT(pawn->Transform.Position.x > startPos.x, "MovementComponent failed to advance actor along input vector");
+        return true;
+    }
+
+    bool TestModuleSystemAndHTMLUI() {
+        auto& mm = Engine::ModuleManager::Get();
+        auto* uiMod = mm.RegisterModule<Engine::UIModule>();
+        TEST_ASSERT(uiMod != nullptr, "Failed to register UIModule");
+        TEST_ASSERT(mm.GetModule<Engine::UIModule>() == uiMod, "GetModule returned wrong instance");
+
+        // Test HTML + CSS parser
+        std::string testHTML =
+            "<div style=\"background-color: #ff0000; padding: 10px;\">"
+            "  <button id=\"myBtn\" style=\"color: #00ff00;\">Start Game</button>"
+            "</div>";
+
+        Engine::UIDocument doc;
+        doc.LoadFromString(testHTML);
+
+        auto btn = doc.GetRoot()->FindById("myBtn");
+        TEST_ASSERT(btn != nullptr, "Failed to find element by ID 'myBtn'");
+        TEST_ASSERT(btn->Text == "Start Game", "Button text mismatch");
+        TEST_ASSERT(btn->Style.TextColor.g > 0.9f, "CSS color parsing failed");
+
+        bool bClicked = false;
+        btn->OnClick = [&bClicked]() { bClicked = true; };
+        btn->OnClick();
+        TEST_ASSERT(bClicked == true, "Button click callback failed");
+
+        return true;
+    }
+
+    bool TestSkeletalAnimation() {
+        Engine::Scene scene;
+        auto character = scene.SpawnActor("Character");
+        auto skelComp = character->AddComponent<Engine::SkeletalMeshComponent>();
+        TEST_ASSERT(!skelComp->MeshSkeleton.GetBones().empty(), "Skeleton bones must not be empty");
+
+        auto anim = std::make_shared<Engine::AnimationSequence>("Walk", 1.0f, 30.0f);
+        Engine::BoneTrack track;
+        track.BoneName = "Arm";
+        track.Positions.push_back({0.0f, glm::vec3(0.0f, 1.0f, 0.0f)});
+        track.Positions.push_back({1.0f, glm::vec3(0.0f, 2.0f, 0.0f)});
+        anim->AddTrack(track);
+
+        skelComp->PlayAnimation(anim, true);
+        skelComp->Tick(0.5f);
+
+        TEST_ASSERT(std::abs(skelComp->CurrentTime - 0.5f) < 0.001f, "Animation time didn't step correctly");
+        const auto& bones = skelComp->MeshSkeleton.GetBones();
+        TEST_ASSERT(bones.size() >= 2, "Bone count mismatch");
+        TEST_ASSERT(bones[1].LocalTransform.Position.y > 1.2f, "Skeletal animation failed to evaluate bone track LERP");
 
         return true;
     }
@@ -167,14 +251,18 @@ namespace EngineTests {
     }
 
     bool TestProjectScaffolding() {
-        std::filesystem::path tempDir = std::filesystem::temp_directory_path() / "EngineTestProject";
+        std::filesystem::path tempDir = std::filesystem::temp_directory_path() / "EngineTestProject2";
         std::filesystem::remove_all(tempDir);
 
-        auto project = Engine::Project::CreateNew(tempDir, "TestGame");
+        auto project = Engine::Project::CreateNew(tempDir, "CustomGame");
         TEST_ASSERT(project != nullptr, "CreateNew project failed");
-        TEST_ASSERT(std::filesystem::exists(tempDir / "TestGame.uproj"), "Project file .uproj does not exist");
-        TEST_ASSERT(std::filesystem::exists(tempDir / "Source" / "SampleGameplayActor.hpp"), "Scaffolded C++ header missing");
-        TEST_ASSERT(std::filesystem::exists(tempDir / "Source" / "SampleGameplayActor.cpp"), "Scaffolded C++ source missing");
+        TEST_ASSERT(std::filesystem::exists(tempDir / "CustomGame.uproj"), "Project file .uproj does not exist");
+
+        // Test custom class generation
+        bool gen = project->GenerateActorClass("MonsterPawn");
+        TEST_ASSERT(gen == true, "GenerateActorClass failed");
+        TEST_ASSERT(std::filesystem::exists(tempDir / "Source" / "MonsterPawn.hpp"), "Scaffolded MonsterPawn.hpp missing");
+        TEST_ASSERT(std::filesystem::exists(tempDir / "Source" / "MonsterPawn.cpp"), "Scaffolded MonsterPawn.cpp missing");
 
         std::filesystem::remove_all(tempDir);
         return true;
@@ -188,7 +276,7 @@ int main() {
     std::cout << "========================================\n";
 
     int passed = 0;
-    int total = 7;
+    int total = 10;
 
     auto runTest = [&](const char* name, bool(*func)()) {
         std::cout << "[RUNNING] " << name << "... ";
@@ -204,9 +292,12 @@ int main() {
     runTest("Math, Vectors & Transform Matrix", EngineTests::TestMathAndTransform);
     runTest("Runtime Reflection & Property Inspection", EngineTests::TestReflection);
     runTest("Scene, Actor & Component Hierarchy", EngineTests::TestSceneAndActorHierarchy);
-    runTest("Physics Gravity, Collisions & Raycast", EngineTests::TestPhysics);
+    runTest("Physics, Collisions & Bounds Fitting", EngineTests::TestPhysicsAndCollisionFitting);
+    runTest("Movement Locomotion Component", EngineTests::TestMovementComponent);
+    runTest("Modular Engine System & HTML+CSS UI", EngineTests::TestModuleSystemAndHTMLUI);
+    runTest("Skeletal Mesh Animation System", EngineTests::TestSkeletalAnimation);
     runTest("Procedural Geometry Primitives", EngineTests::TestPrimitives);
-    runTest("Project Scaffolding & C++ Code Generator", EngineTests::TestProjectScaffolding);
+    runTest("Project Scaffolding & Dynamic Class Generator", EngineTests::TestProjectScaffolding);
 
     std::cout << "========================================\n";
     std::cout << "Tests Passed: " << passed << " / " << total << "\n";

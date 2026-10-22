@@ -1,9 +1,21 @@
 #version 450
 
-layout(binding = 0) uniform CameraUBO {
+struct PointLightData {
+    vec4 positionAndRadius;
+    vec4 colorAndIntensity;
+};
+
+layout(binding = 0) uniform SceneUBO {
     mat4 view;
     mat4 proj;
-    vec3 cameraPos;
+    vec4 cameraPos;
+    vec4 dirLightDirAndEnabled;
+    vec4 dirLightColorAndIntensity;
+    PointLightData pointLights[4];
+    int pointLightCount;
+    int pad1;
+    int pad2;
+    int pad3;
 } ubo;
 
 layout(push_constant) uniform PushConstants {
@@ -27,13 +39,12 @@ void main() {
     vec4 worldPos = pc.model * vec4(inPosition, 1.0);
     fragWorldPos = worldPos.xyz;
     
-    // Normal matrix to handle non-uniform scaling correctly
     mat3 normalMatrix = transpose(inverse(mat3(pc.model)));
     fragNormal = normalize(normalMatrix * inNormal);
     
     fragTexCoord = inTexCoord;
     fragBaseColor = pc.baseColor;
-    fragCameraPos = ubo.cameraPos;
+    fragCameraPos = ubo.cameraPos.xyz;
 
     gl_Position = ubo.proj * ubo.view * worldPos;
 }

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "scene/Scene.hpp"
+#include <functional>
 
 namespace Engine {
 
@@ -25,6 +26,8 @@ namespace Engine {
 
         [[nodiscard]] Actor* GetSelectedActor() const noexcept { return m_SelectedActor; }
         void SetSelectedActor(Actor* actor) noexcept { m_SelectedActor = actor; }
+
+        std::function<void(Actor*)> OnActorDoubleClicked;
 
     private:
         Actor* m_SelectedActor{nullptr};

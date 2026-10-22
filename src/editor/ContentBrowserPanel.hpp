@@ -21,6 +21,12 @@ namespace Engine {
         explicit ContentBrowserPanel(Project& project);
 
         /**
+         * @brief Updates active project reference and resets root paths.
+         * @param project New active project.
+         */
+        void SetProject(Project& project);
+
+        /**
          * @brief Renders the content browser panel.
          * @param scene Active scene pointer for loading scene assets.
          */
@@ -31,7 +37,7 @@ namespace Engine {
         void DrawBreadcrumbs();
         void DrawFileGrid(Scene& scene);
 
-        Project& m_Project;
+        Project* m_Project{nullptr};
         std::filesystem::path m_RootPath;
         std::filesystem::path m_CurrentPath;
 

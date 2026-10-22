@@ -5,6 +5,7 @@
 
 #include "VulkanRenderer.hpp"
 #include "scene/StaticMeshComponent.hpp"
+#include "scene/LightComponent.hpp"
 #include "core/Log.hpp"
 #include <backends/imgui_impl_vulkan.h>
 #include <fstream>
@@ -52,7 +53,7 @@ namespace Engine {
         vkDeviceWaitIdle(device);
 
         m_PrimitiveMeshes.clear();
-        m_CameraUBO.reset();
+        m_SceneUBO.reset();
 
         if (m_Pipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(device, m_Pipeline, nullptr);
@@ -289,7 +290,7 @@ namespace Engine {
         uboLayoutBinding.binding = 0;
         uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         uboLayoutBinding.descriptorCount = 1;
-        uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -300,9 +301,9 @@ namespace Engine {
     }
 
     bool VulkanRenderer::CreateUniformBuffers() {
-        m_CameraUBO = std::make_unique<VulkanBuffer>(
+        m_SceneUBO = std::make_unique<VulkanBuffer>(
             m_Context,
-            sizeof(CameraUBO),
+            sizeof(SceneUBO),
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         );
@@ -335,9 +336,9 @@ namespace Engine {
         }
 
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = m_CameraUBO->GetBuffer();
+        bufferInfo.buffer = m_SceneUBO->GetBuffer();
         bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(CameraUBO);
+        bufferInfo.range = sizeof(SceneUBO);
 
         VkWriteDescriptorSet descriptorWrite{};
         descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -548,12 +549,33 @@ namespace Engine {
             return;
         }
 
-        // 1. Update Camera UBO
-        CameraUBO ubo;
+        // 1. Update Scene UBO with Camera & Dynamic Lights
+        SceneUBO ubo{};
         ubo.View = camera.GetViewMatrix();
         ubo.Proj = camera.GetProjectionMatrix();
-        ubo.CameraPos = camera.GetPosition();
-        m_CameraUBO->UploadData(&ubo, sizeof(CameraUBO));
+        ubo.CameraPos = glm::vec4(camera.GetPosition(), 1.0f);
+        ubo.DirLightDirAndEnabled = glm::vec4(0.0f);
+        ubo.DirLightColorAndIntensity = glm::vec4(1.0f);
+        ubo.PointLightCount = 0;
+
+        int pointIndex = 0;
+        for (const auto& actor : scene.GetActors()) {
+            if (!actor->bIsVisible) continue;
+            if (auto light = actor->GetComponent<LightComponent>()) {
+                if (light->Type == LightType::Directional) {
+                    glm::vec3 forward = actor->Transform.GetForward();
+                    ubo.DirLightDirAndEnabled = glm::vec4(forward, 1.0f); // Enabled!
+                    ubo.DirLightColorAndIntensity = glm::vec4(light->LightColor, light->Intensity);
+                } else if (light->Type == LightType::Point && pointIndex < 4) {
+                    ubo.PointLights[pointIndex].PositionAndRadius = glm::vec4(actor->Transform.Position, light->Radius);
+                    ubo.PointLights[pointIndex].ColorAndIntensity = glm::vec4(light->LightColor, light->Intensity);
+                    pointIndex++;
+                }
+            }
+        }
+        ubo.PointLightCount = pointIndex;
+
+        m_SceneUBO->UploadData(&ubo, sizeof(SceneUBO));
 
         // 2. Record Render Command Buffer
         VkCommandBuffer cmd = m_Context.BeginSingleTimeCommands();

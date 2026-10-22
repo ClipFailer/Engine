@@ -10,8 +10,12 @@
 
 namespace Engine {
 
-    ContentBrowserPanel::ContentBrowserPanel(Project& project)
-        : m_Project(project) {
+    ContentBrowserPanel::ContentBrowserPanel(Project& project) {
+        SetProject(project);
+    }
+
+    void ContentBrowserPanel::SetProject(Project& project) {
+        m_Project = &project;
         m_RootPath = project.GetProjectPath().parent_path();
         if (m_RootPath.empty() || !std::filesystem::exists(m_RootPath)) {
             m_RootPath = std::filesystem::current_path();
@@ -54,7 +58,7 @@ namespace Engine {
             ImGui::Spacing();
 
             if (ImGui::Button("Create Class", ImVec2(120, 0))) {
-                if (m_Project.GenerateActorClass(m_NewClassName)) {
+                if (m_Project && m_Project->GenerateActorClass(m_NewClassName)) {
                     LOG_INFO("Created C++ Actor class: {}", m_NewClassName);
                 }
                 m_bShowCreateClassModal = false;

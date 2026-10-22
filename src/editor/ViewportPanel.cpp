@@ -9,8 +9,8 @@
 
 namespace Engine {
 
-    ViewportPanel::ViewportPanel(VulkanRenderer& renderer, Camera& camera)
-        : m_Renderer(renderer), m_Camera(camera) {}
+    ViewportPanel::ViewportPanel(VulkanRenderer& renderer, Camera& camera, PhysicsWorld& physicsWorld)
+        : m_Renderer(renderer), m_Camera(camera), m_PhysicsWorld(physicsWorld) {}
 
     void ViewportPanel::Render(Scene& scene, Actor* selectedActor) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -18,6 +18,7 @@ namespace Engine {
 
         m_bIsHovered = ImGui::IsWindowHovered();
         m_bIsFocused = ImGui::IsWindowFocused();
+        m_ViewportPos = ImGui::GetCursorScreenPos();
 
         ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
         if (viewportPanelSize.x > 0.0f && viewportPanelSize.y > 0.0f) {
@@ -34,7 +35,8 @@ namespace Engine {
             ImGui::Image((ImTextureID)textureId, m_ViewportSize);
         }
 
-        HandleCameraInput();
+        HandlePicking(scene);
+        HandleCameraInput(scene, selectedActor);
         RenderToolbar();
         RenderGizmo(selectedActor);
 
@@ -42,11 +44,52 @@ namespace Engine {
         ImGui::PopStyleVar();
     }
 
-    void ViewportPanel::HandleCameraInput() {
+    void ViewportPanel::HandlePicking(const Scene& scene) {
+        if (!m_bIsHovered || ImGuizmo::IsOver() || ImGuizmo::IsUsing()) return;
+
+        ImGuiIO& io = ImGui::GetIO();
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            ImVec2 mousePos = io.MousePos;
+            float relX = mousePos.x - m_ViewportPos.x;
+            float relY = mousePos.y - m_ViewportPos.y;
+
+            if (relX >= 0.0f && relX <= m_ViewportSize.x && relY >= 0.0f && relY <= m_ViewportSize.y) {
+                float ndcX = (relX / m_ViewportSize.x) * 2.0f - 1.0f;
+                float ndcY = 1.0f - (relY / m_ViewportSize.y) * 2.0f; // Invert Y
+
+                glm::mat4 invProj = glm::inverse(m_Camera.GetProjectionMatrix());
+                glm::mat4 invView = glm::inverse(m_Camera.GetViewMatrix());
+
+                glm::vec4 clipCoords(ndcX, ndcY, -1.0f, 1.0f);
+                glm::vec4 eyeCoords = invProj * clipCoords;
+                eyeCoords = glm::vec4(eyeCoords.x, eyeCoords.y, -1.0f, 0.0f);
+
+                glm::vec3 rayDir = glm::normalize(glm::vec3(invView * eyeCoords));
+                glm::vec3 rayOrigin = m_Camera.GetPosition();
+
+                auto hit = m_PhysicsWorld.Raycast(scene, rayOrigin, rayDir, 200.0f);
+                if (hit.bHit && hit.HitActor) {
+                    if (OnActorSelected) OnActorSelected(hit.HitActor);
+                    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && OnActorDoubleClicked) {
+                        OnActorDoubleClicked(hit.HitActor);
+                    }
+                }
+            }
+        }
+    }
+
+    void ViewportPanel::HandleCameraInput(Scene& scene, Actor* selectedActor) {
         if (!m_bIsHovered) return;
 
         ImGuiIO& io = ImGui::GetIO();
         float dt = io.DeltaTime;
+
+        // Delete selected actor on Delete key
+        if (selectedActor && ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+            scene.DestroyActor(selectedActor);
+            if (OnActorSelected) OnActorSelected(nullptr);
+            return;
+        }
 
         // Fly Camera (RMB held down)
         if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {

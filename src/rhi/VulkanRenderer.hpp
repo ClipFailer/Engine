@@ -16,15 +16,24 @@
 
 namespace Engine {
 
+    struct PointLightData {
+        glm::vec4 PositionAndRadius{0.0f};
+        glm::vec4 ColorAndIntensity{1.0f};
+    };
+
     /**
-     * @struct CameraUBO
-     * @brief Uniform buffer layout passed to vertex/fragment shaders.
+     * @struct SceneUBO
+     * @brief Uniform buffer layout passed to vertex/fragment shaders with dynamic lights.
      */
-    struct CameraUBO {
+    struct SceneUBO {
         glm::mat4 View{1.0f};
         glm::mat4 Proj{1.0f};
-        glm::vec3 CameraPos{0.0f};
-        float Padding{0.0f};
+        glm::vec4 CameraPos{0.0f};
+        glm::vec4 DirLightDirAndEnabled{0.0f};
+        glm::vec4 DirLightColorAndIntensity{1.0f};
+        PointLightData PointLights[4];
+        int32 PointLightCount{0};
+        int32 Pad[3]{0, 0, 0};
     };
 
     /**
@@ -130,7 +139,7 @@ namespace Engine {
         VkPipelineLayout m_PipelineLayout{VK_NULL_HANDLE};
         VkPipeline m_Pipeline{VK_NULL_HANDLE};
 
-        std::unique_ptr<VulkanBuffer> m_CameraUBO;
+        std::unique_ptr<VulkanBuffer> m_SceneUBO;
         std::unordered_map<PrimitiveType, GPUMesh> m_PrimitiveMeshes;
     };
 

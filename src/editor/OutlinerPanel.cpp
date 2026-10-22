@@ -40,8 +40,17 @@ namespace Engine {
                 m_SelectedActor = actor.get();
             }
 
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                if (OnActorDoubleClicked) {
+                    OnActorDoubleClicked(actor.get());
+                }
+            }
+
             // Actor Right-click context menu
             if (ImGui::BeginPopupContextItem()) {
+                if (ImGui::MenuItem("Open Actor Detail Window")) {
+                    if (OnActorDoubleClicked) OnActorDoubleClicked(actor.get());
+                }
                 if (ImGui::MenuItem("Delete Actor")) {
                     if (m_SelectedActor == actor.get()) m_SelectedActor = nullptr;
                     scene.DestroyActor(actor.get());
@@ -60,26 +69,39 @@ namespace Engine {
             }
         }
 
+        // Delete key handling in Outliner
+        if (m_SelectedActor && ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+            scene.DestroyActor(m_SelectedActor);
+            m_SelectedActor = nullptr;
+        }
+
         // Window background right-click context menu (Add Actor)
         if (ImGui::BeginPopupContextWindow(nullptr, ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
             if (ImGui::BeginMenu("Add Actor")) {
                 if (ImGui::MenuItem("Cube Actor")) {
                     auto cube = scene.SpawnActor("Cube Actor");
                     cube->Transform.Position = glm::vec3(0.0f, 2.0f, 0.0f);
-                    cube->AddComponent<StaticMeshComponent>(PrimitiveType::Cube);
-                    cube->AddComponent<RigidBodyComponent>();
                     m_SelectedActor = cube;
                 }
                 if (ImGui::MenuItem("Sphere Actor")) {
                     auto sphere = scene.SpawnActor("Sphere Actor");
                     sphere->Transform.Position = glm::vec3(0.0f, 2.0f, 0.0f);
-                    sphere->AddComponent<StaticMeshComponent>(PrimitiveType::Sphere);
-                    sphere->AddComponent<RigidBodyComponent>();
+                    if (auto mesh = sphere->GetComponent<StaticMeshComponent>()) {
+                        mesh->MeshType = PrimitiveType::Sphere;
+                    }
                     m_SelectedActor = sphere;
                 }
                 if (ImGui::MenuItem("Directional Light")) {
                     auto light = scene.SpawnActor("Directional Light");
                     light->AddComponent<LightComponent>(LightType::Directional);
+                    m_SelectedActor = light;
+                }
+                if (ImGui::MenuItem("Point Light")) {
+                    auto light = scene.SpawnActor("Point Light");
+                    light->Transform.Position = glm::vec3(0.0f, 3.0f, 0.0f);
+                    auto pl = light->AddComponent<LightComponent>(LightType::Point);
+                    pl->Radius = 10.0f;
+                    pl->Intensity = 2.0f;
                     m_SelectedActor = light;
                 }
                 if (ImGui::MenuItem("Empty Actor")) {

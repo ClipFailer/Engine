@@ -5,6 +5,8 @@
 
 #include "PhysicsWorld.hpp"
 #include "scene/Scene.hpp"
+#include "scene/PhysicsComponent.hpp"
+#include "scene/CollisionComponent.hpp"
 #include "scene/RigidBodyComponent.hpp"
 #include "scene/StaticMeshComponent.hpp"
 #include <glm/gtx/intersect.hpp>
@@ -13,10 +15,63 @@ namespace Engine {
 
     PhysicsWorld::PhysicsWorld() = default;
 
+    struct PhysicsBodyAdapter {
+        bool bValid{false};
+        bool bIsStatic{false};
+        bool bUseGravity{true};
+        float Mass{1.0f};
+        glm::vec3& LinearVelocity;
+        glm::vec3& AngularVelocity;
+        float Restitution{0.6f};
+        float Friction{0.2f};
+        bool bIsSphere{false};
+        float RadiusOrHalfH{0.5f};
+    };
+
+    static std::optional<PhysicsBodyAdapter> GetBodyAdapter(Actor* actor) {
+        if (!actor) return std::nullopt;
+
+        if (auto phys = actor->GetComponent<PhysicsComponent>()) {
+            auto coll = actor->GetComponent<CollisionComponent>();
+            bool isSphere = coll ? (coll->Shape == CollisionShape::Sphere) : false;
+            float dim = coll ? (isSphere ? coll->SphereRadius : coll->BoxHalfExtents.y) : 0.5f;
+            float rest = coll ? coll->Restitution : 0.6f;
+            float fric = coll ? coll->Friction : 0.2f;
+
+            return PhysicsBodyAdapter{
+                true,
+                phys->bIsStatic,
+                phys->bUseGravity,
+                phys->Mass,
+                phys->LinearVelocity,
+                phys->AngularVelocity,
+                rest,
+                fric,
+                isSphere,
+                dim
+            };
+        } else if (auto rb = actor->GetComponent<RigidBodyComponent>()) {
+            bool isSphere = (rb->Shape == ColliderType::Sphere);
+            float dim = isSphere ? rb->ColliderDimensions.x : rb->ColliderDimensions.y;
+            return PhysicsBodyAdapter{
+                true,
+                rb->bIsStatic,
+                rb->bUseGravity,
+                rb->Mass,
+                rb->LinearVelocity,
+                rb->AngularVelocity,
+                rb->Restitution,
+                rb->Friction,
+                isSphere,
+                dim
+            };
+        }
+        return std::nullopt;
+    }
+
     void PhysicsWorld::Step(Scene& scene, float deltaTime) {
         if (deltaTime <= 0.0f) return;
 
-        // Sub-stepping for numerical stability
         const int subSteps = 2;
         const float dt = deltaTime / static_cast<float>(subSteps);
 
@@ -25,41 +80,36 @@ namespace Engine {
 
             // 1. Integration (Gravity & Velocity)
             for (const auto& actor : actors) {
-                auto rb = actor->GetComponent<RigidBodyComponent>();
-                if (!rb || rb->bIsStatic) continue;
+                auto body = GetBodyAdapter(actor.get());
+                if (!body || body->bIsStatic) continue;
 
-                if (rb->bUseGravity) {
-                    rb->LinearVelocity += Gravity * dt;
+                if (body->bUseGravity) {
+                    body->LinearVelocity += Gravity * dt;
                 }
 
-                actor->Transform.Position += rb->LinearVelocity * dt;
-                actor->Transform.Rotation += rb->AngularVelocity * dt;
+                actor->Transform.Position += body->LinearVelocity * dt;
+                actor->Transform.Rotation += body->AngularVelocity * dt;
             }
 
             // 2. Collision detection & resolution
             for (size_t i = 0; i < actors.size(); ++i) {
-                auto rbA = actors[i]->GetComponent<RigidBodyComponent>();
-                if (!rbA) continue;
+                auto bodyA = GetBodyAdapter(actors[i].get());
+                if (!bodyA) continue;
 
                 // Collision with floor plane (Y = 0)
-                if (!rbA->bIsStatic) {
+                if (!bodyA->bIsStatic) {
                     float bottomY = actors[i]->Transform.Position.y;
-                    float radiusOrHalfH = (rbA->Shape == ColliderType::Sphere) 
-                                          ? rbA->ColliderDimensions.x 
-                                          : rbA->ColliderDimensions.y;
-
-                    if (bottomY - radiusOrHalfH < 0.0f) {
-                        float penetration = -(bottomY - radiusOrHalfH);
+                    if (bottomY - bodyA->RadiusOrHalfH < 0.0f) {
+                        float penetration = -(bottomY - bodyA->RadiusOrHalfH);
                         actors[i]->Transform.Position.y += penetration;
 
-                        if (rbA->LinearVelocity.y < 0.0f) {
-                            rbA->LinearVelocity.y = -rbA->LinearVelocity.y * rbA->Restitution;
-                            rbA->LinearVelocity.x *= (1.0f - rbA->Friction);
-                            rbA->LinearVelocity.z *= (1.0f - rbA->Friction);
+                        if (bodyA->LinearVelocity.y < 0.0f) {
+                            bodyA->LinearVelocity.y = -bodyA->LinearVelocity.y * bodyA->Restitution;
+                            bodyA->LinearVelocity.x *= (1.0f - bodyA->Friction);
+                            bodyA->LinearVelocity.z *= (1.0f - bodyA->Friction);
 
-                            // Sleeping threshold
-                            if (std::abs(rbA->LinearVelocity.y) < 0.15f) {
-                                rbA->LinearVelocity.y = 0.0f;
+                            if (std::abs(bodyA->LinearVelocity.y) < 0.15f) {
+                                bodyA->LinearVelocity.y = 0.0f;
                             }
                         }
                     }
@@ -67,14 +117,14 @@ namespace Engine {
 
                 // Actor vs Actor collisions
                 for (size_t j = i + 1; j < actors.size(); ++j) {
-                    auto rbB = actors[j]->GetComponent<RigidBodyComponent>();
-                    if (!rbB) continue;
-                    if (rbA->bIsStatic && rbB->bIsStatic) continue;
+                    auto bodyB = GetBodyAdapter(actors[j].get());
+                    if (!bodyB) continue;
+                    if (bodyA->bIsStatic && bodyB->bIsStatic) continue;
 
                     // Sphere vs Sphere
-                    if (rbA->Shape == ColliderType::Sphere && rbB->Shape == ColliderType::Sphere) {
-                        float rA = rbA->ColliderDimensions.x;
-                        float rB = rbB->ColliderDimensions.x;
+                    if (bodyA->bIsSphere && bodyB->bIsSphere) {
+                        float rA = bodyA->RadiusOrHalfH;
+                        float rB = bodyB->RadiusOrHalfH;
                         glm::vec3 delta = actors[i]->Transform.Position - actors[j]->Transform.Position;
                         float dist = glm::length(delta);
                         float minDist = rA + rB;
@@ -83,29 +133,27 @@ namespace Engine {
                             glm::vec3 normal = delta / dist;
                             float penetration = minDist - dist;
 
-                            // Positional correction
-                            if (!rbA->bIsStatic && !rbB->bIsStatic) {
+                            if (!bodyA->bIsStatic && !bodyB->bIsStatic) {
                                 actors[i]->Transform.Position += normal * (penetration * 0.5f);
                                 actors[j]->Transform.Position -= normal * (penetration * 0.5f);
-                            } else if (!rbA->bIsStatic) {
+                            } else if (!bodyA->bIsStatic) {
                                 actors[i]->Transform.Position += normal * penetration;
-                            } else if (!rbB->bIsStatic) {
+                            } else if (!bodyB->bIsStatic) {
                                 actors[j]->Transform.Position -= normal * penetration;
                             }
 
-                            // Impulse resolution
-                            glm::vec3 relVel = rbA->LinearVelocity - rbB->LinearVelocity;
+                            glm::vec3 relVel = bodyA->LinearVelocity - bodyB->LinearVelocity;
                             float velAlongNormal = glm::dot(relVel, normal);
 
                             if (velAlongNormal < 0.0f) {
-                                float e = std::min(rbA->Restitution, rbB->Restitution);
-                                float invMassA = rbA->bIsStatic ? 0.0f : (1.0f / rbA->Mass);
-                                float invMassB = rbB->bIsStatic ? 0.0f : (1.0f / rbB->Mass);
+                                float e = std::min(bodyA->Restitution, bodyB->Restitution);
+                                float invMassA = bodyA->bIsStatic ? 0.0f : (1.0f / bodyA->Mass);
+                                float invMassB = bodyB->bIsStatic ? 0.0f : (1.0f / bodyB->Mass);
                                 float jImpulse = -(1.0f + e) * velAlongNormal / (invMassA + invMassB);
                                 glm::vec3 impulse = normal * jImpulse;
 
-                                if (!rbA->bIsStatic) rbA->LinearVelocity += impulse * invMassA;
-                                if (!rbB->bIsStatic) rbB->LinearVelocity -= impulse * invMassB;
+                                if (!bodyA->bIsStatic) bodyA->LinearVelocity += impulse * invMassA;
+                                if (!bodyB->bIsStatic) bodyB->LinearVelocity -= impulse * invMassB;
                             }
                         }
                     }
